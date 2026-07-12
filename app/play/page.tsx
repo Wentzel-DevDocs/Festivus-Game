@@ -135,9 +135,15 @@ function GrievanceComposer({
   // We remember how many the server ACCEPTED from us, so we can show the
   // remaining quota and a little "sent" receipt per submission.
   const [sent, setSent] = useState<string[]>([]);
+  // The SERVER'S quota survives refreshes and remounts (it's keyed by your
+  // sticky id); our local `sent` list does not. When the server says the
+  // limit is reached, trust it over the local count.
+  const [limitReached, setLimitReached] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const remaining = GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER - sent.length;
+  const remaining = limitReached
+    ? 0
+    : GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER - sent.length;
 
   async function submit() {
     const trimmed = text.trim();
@@ -147,8 +153,11 @@ function GrievanceComposer({
       setSent((prev) => [...prev, trimmed]);
       setText("");
       setError(null);
+    } else if (res.reason === "limit reached") {
+      setLimitReached(true);
+      setError("You've aired your full allotment of grievances. The rest can wait for dinner.");
     } else {
-      // e.g. quota reached on the server side, or a dropped connection.
+      // e.g. a dropped connection or the wrong phase.
       setError(res.reason ?? "The committee rejected that one. Try again.");
     }
   }
@@ -482,10 +491,12 @@ export default function PlayPage() {
         </button>
       </div>
 
-      {/* b. Phase-dependent main panel. */}
+      {/* b. Phase-dependent main panel. myName prefers the SERVER-sanitized
+          name (profanity mask / trim can rewrite what was typed) so the
+          roster lookup always matches. */}
       <div className="flex-1">
         {snapshot && join ? (
-          <PhasePanel room={room} snapshot={snapshot} myName={join.name} />
+          <PhasePanel room={room} snapshot={snapshot} myName={room.you?.name || join.name} />
         ) : (
           <div className="memo-panel p-4">
             <p className="text-sm">Connecting to the room…</p>

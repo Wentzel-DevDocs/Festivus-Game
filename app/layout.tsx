@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   description: "A Festivus party game: help or hinder the boss. Anonymously.",
 };
 
-// Next.js 15 wants viewport settings exported separately from `metadata`.
+// Next.js wants viewport settings exported separately from `metadata`.
 // maximumScale: 1 disables pinch-zoom; combined with the CSS
 // `touch-action: manipulation` in globals.css, rapid mash taps never
 // trigger the browser's double-tap-to-zoom gesture.

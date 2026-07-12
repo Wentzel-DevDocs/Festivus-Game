@@ -112,8 +112,10 @@ export default function Leaderboard({
               </tr>
             </thead>
             <tbody>
-              {alltime.map((entry) => (
-                <tr key={entry.name} className="border-b border-aluminum-700/50">
+              {alltime.map((entry, i) => (
+                // Display names aren't unique (two "Kevin"s are inevitable);
+                // include the row index so React keys never collide.
+                <tr key={`${entry.name}-${i}`} className="border-b border-aluminum-700/50">
                   <td className="py-1 pr-2">{entry.name}</td>
                   <td className="py-1 pr-2 text-right tabular-nums">
                     {entry.totalMashes}

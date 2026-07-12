@@ -85,6 +85,9 @@ export const tugOfWar: EventModule<TugOfWarState> = {
     let winner: "support" | "hinder";
     if (state.ropePos > 0) winner = "support";
     else if (state.ropePos < 0) winner = "hinder";
+    // Dead-center rope: an EMPTY team can never win the coin flip.
+    else if (ctx.sideCounts[0] === 0 && ctx.sideCounts[1] > 0) winner = "hinder";
+    else if (ctx.sideCounts[1] === 0 && ctx.sideCounts[0] > 0) winner = "support";
     else winner = ctx.rng() < 0.5 ? "support" : "hinder";
     return {
       winner,

@@ -22,11 +22,17 @@ export async function GET() {
     try {
       const rows = await db.select().from(levelConfig);
       for (const row of rows) {
-        // Merge over defaults: a row may override just one number.
-        params[row.eventId] = {
-          ...params[row.eventId],
-          ...(row.paramsJson as Record<string, number>),
-        };
+        // Merge over defaults: a row may override just one number. Only
+        // accept FINITE numbers, and refuse a zero/negative durationSec —
+        // one bad hand-edited row must never wedge the whole game.
+        const raw = row.paramsJson as Record<string, unknown>;
+        const clean: Record<string, number> = {};
+        for (const [key, value] of Object.entries(raw)) {
+          if (typeof value !== "number" || !Number.isFinite(value)) continue;
+          if (key === "durationSec" && value <= 0) continue;
+          clean[key] = value;
+        }
+        params[row.eventId] = { ...params[row.eventId], ...clean };
       }
     } catch (err) {
       console.error("level_config read failed; serving defaults", err);

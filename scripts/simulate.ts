@@ -27,11 +27,16 @@ async function main() {
   const { registry } = await import("../server/rivet/registry");
   const { createClient } = await import("rivetkit/client");
   const { GAME_CONFIG } = await import("../lib/game/config");
+  // Expectations derive from the REGISTRY, so adding a sixth event keeps
+  // this sim honest instead of breaking it.
+  const { EVENTS } = await import("../lib/game/engine/registry");
+  const EVENT_COUNT = EVENTS.length;
+  const APPROVAL_WEIGHT = EVENTS.filter((e) => !e.teamBased).reduce((sum, e) => sum + e.weight, 0);
   type Snapshot = import("../lib/realtime/protocol").Snapshot;
   type YouMessage = import("../lib/realtime/protocol").YouMessage;
 
   registry.start();
-  await delay(2000); // give the embedded engine a moment
+  await delay(4000); // give the embedded engine a moment to fully boot
 
   const client = createClient<typeof registry>("http://127.0.0.1:6420");
   const room = () => client.festivusRoom.getOrCreate([GAME_CONFIG.ROOM_ID]);
@@ -86,7 +91,9 @@ async function main() {
         anonymityViolation = `team exposed outside tug-of-war for ${p.name}`;
       }
     }
-    const raw = JSON.stringify(snap);
+    // Sweep everything EXCEPT fx: FxEvent.side is a legitimate aggregate
+    // side index ("the miracle boosted side 1"), never tied to a player.
+    const raw = JSON.stringify({ ...snap, fx: undefined });
     if (/"side":/.test(raw) || /"stickyId":/.test(raw) || /"token/.test(raw)) {
       anonymityViolation = "snapshot contains side/stickyId/token field";
     }
@@ -98,7 +105,7 @@ async function main() {
     check(cond(), label);
   };
 
-  await until(() => latest !== null, 8000, "boss receives snapshots");
+  await until(() => latest !== null, 20_000, "boss receives snapshots");
   check(latest!.phase === "lobby", "room starts in lobby");
 
   /* ── (2) boss inputs are ignored server-side ─────────────────────────── */
@@ -134,7 +141,7 @@ async function main() {
   const sidePick = (i: number): 0 | 1 => (i < 3 ? 0 : 1);
   let cheaterBurstDone = false;
 
-  for (let eventNum = 0; eventNum < 5; eventNum++) {
+  for (let eventNum = 0; eventNum < EVENT_COUNT; eventNum++) {
     await until(
       () => latest?.phase === "event_countdown" || latest?.phase === "event_active",
       30_000,
@@ -201,10 +208,19 @@ async function main() {
   const summary = latest!.matchSummary;
   check(!!summary, "match summary exists");
   if (summary) {
-    // (6) approval math: 3 helpers / 2 hinderers on 4 solo events,
-    // weights 1+1+1+2 = 5 → support 15, hinder 10 → beloved.
-    check(summary.approvalSupport === 15, `approval support = 15 (got ${summary.approvalSupport})`);
-    check(summary.approvalHinder === 10, `approval hinder = 10 (got ${summary.approvalHinder})`);
+    // (6) approval math: 3 helpers / 2 hinderers on every non-team event,
+    // so support = 3 × Σweights and hinder = 2 × Σweights (15/10 with the
+    // shipped registry) → beloved.
+    const wantSupport = 3 * APPROVAL_WEIGHT;
+    const wantHinder = 2 * APPROVAL_WEIGHT;
+    check(
+      summary.approvalSupport === wantSupport,
+      `approval support = ${wantSupport} (got ${summary.approvalSupport})`,
+    );
+    check(
+      summary.approvalHinder === wantHinder,
+      `approval hinder = ${wantHinder} (got ${summary.approvalHinder})`,
+    );
     check(summary.verdict === "beloved", `verdict beloved (got ${summary.verdict})`);
 
     // (7) champion = top masher in the final roster.
@@ -212,9 +228,15 @@ async function main() {
     check(summary.championName === top?.name, `champion is top masher (${summary.championName})`);
   }
 
-  check(eventsSeen.size === 5, `all 5 events ran (${[...eventsSeen].join(", ")})`);
+  check(
+    eventsSeen.size === EVENT_COUNT,
+    `all ${EVENT_COUNT} events ran (${[...eventsSeen].join(", ")})`,
+  );
   check(anonymityViolation === null, `anonymity sweep clean${anonymityViolation ? `: ${anonymityViolation}` : ""}`);
-  check((latest!.roundResults?.length ?? 0) === 5, "5 round results recorded");
+  check(
+    (latest!.roundResults?.length ?? 0) === EVENT_COUNT,
+    `${EVENT_COUNT} round results recorded`,
+  );
 
   /* ── verdict ─────────────────────────────────────────────────────────── */
 

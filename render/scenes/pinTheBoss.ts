@@ -34,7 +34,7 @@ const clamp01 = (v: number) => clamp(v, 0, 1);
 
 /** Upright tilt of the plank (radians). See the header for the sign story. */
 const UP_ROT = (80 * Math.PI) / 180;
-/** Where the pin line sits along the plank's travel (matches the module). */
+/** Default pin-line travel fraction — overridden by the server's view. */
 const PIN_LINE_FRAC = 0.78;
 
 /** Safe reads from the loosely-typed EventView bag. */
@@ -309,6 +309,7 @@ export const pinTheBossScene: SceneFactory = () => {
   let shownCount = 0;
   let overLine = false;
   let pinnedOut = false;
+  let pinLineFrac = PIN_LINE_FRAC;
 
   /** Direction (radians) from the hinge to the head at a given pinPos. */
   function angleAt(p: number): number {
@@ -368,7 +369,9 @@ export const pinTheBossScene: SceneFactory = () => {
     buildPlank(bodyLen, headSize);
 
     // Travel guide (faint) + the grease-yellow PIN LINE marker arc.
-    const aLine = angleAt(PIN_LINE_FRAC);
+    // The line position comes from the server's view (data-driven via
+    // level_config), falling back to the shipped default.
+    const aLine = angleAt(pinLineFrac);
     pinLineG
       .clear()
       .arc(hingeX, hingeY, headDist, Math.PI, Math.PI + UP_ROT)
@@ -540,7 +543,16 @@ export const pinTheBossScene: SceneFactory = () => {
         pinTarget = num(args.view, "pinPos", pinTarget);
         overLine = flag(args.view, "overLine", overLine);
         pinnedOut = flag(args.view, "pinnedOut", pinnedOut);
-        syncCount(num(args.view, "count", shownCount));
+        // The 1-2-3 count is DISCRETE: read it from the un-lerped latest
+        // snapshot — interpolating it produces 0.5, 1.7… and flickering
+        // digits between snapshots.
+        syncCount(num(args.snap.eventView, "count", shownCount));
+        // Draw the pin line where the SERVER says it is (level_config).
+        const serverLine = num(args.snap.eventView, "pinLine", pinLineFrac);
+        if (Math.abs(serverLine - pinLineFrac) > 0.001) {
+          pinLineFrac = serverLine;
+          layout(lastW, lastH);
+        }
       }
       if (pinnedOut) pinTarget = 1; // hold him flat once the 3-count lands
 

@@ -18,6 +18,9 @@ import { clamp01, maybeMiracle, newMiracle } from "../engine/math";
 import type { MiracleState } from "../engine/math";
 
 interface PinTheBossState {
+  /** Where the pin line sits (copied from params so the renderer draws the
+   *  SAME line the referee actually counts against). */
+  pinLine: number;
   /** See-saw pin bar: 0 = upright, 1 = pinned flat. */
   pinPos: number;
   /** How long the bar has been held past the pin line (ms). */
@@ -42,8 +45,9 @@ export const pinTheBoss: EventModule<PinTheBossState> = {
   teamBased: false,
   durationSec: 25,
 
-  init(): PinTheBossState {
+  init(ctx): PinTheBossState {
     return {
+      pinLine: ctx.params.pinLine ?? 0.78,
       pinPos: 0,
       holdMs: 0,
       count: 0,
@@ -124,6 +128,7 @@ export const pinTheBoss: EventModule<PinTheBossState> = {
   view(state) {
     return {
       pinPos: state.pinPos,
+      pinLine: state.pinLine,
       count: state.count,
       overLine: state.overLine,
       pinnedOut: state.pinnedOut,

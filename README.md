@@ -21,7 +21,8 @@ Three layers. Each one does the only job it's good at.
 ```
                  EVERYONE'S BROWSERS
         (Next.js pages + a PixiJS canvas)
-    boss screen at /            phones at /play
+   boss screen at /boss          phones at /play
+    (everyone starts at / and picks a door)
           │                           │
           │ normal HTTPS              │ WebSocket*
           │ (pages, API)              │ (the live game)
@@ -65,7 +66,9 @@ serves the match; Neon remembers what's worth remembering.
 
 ## Run it locally in 3 minutes
 
-You need Node 20+ and pnpm.
+You need **Node 24+** and pnpm. (The app is built on Next.js 16, which
+bundles with **Turbopack** by default — `pnpm dev` and `pnpm build` just use
+it; nothing to configure.)
 
 ```bash
 pnpm install
@@ -120,7 +123,13 @@ database-driven tuning.
 1. Create a free project at [console.neon.tech](https://console.neon.tech).
 2. On the project page, click **Connect** and copy the connection string.
 3. Paste it into `.env.local` as `DATABASE_URL=postgres://...`.
-4. Apply the migrations, then seed the tuning table:
+4. Also set `INTERNAL_API_SECRET` in `.env.local` (generate one with
+   `openssl rand -hex 24`). Match **results** are written by the actor
+   calling `POST /api/results`, and that route *fails closed* without the
+   secret — a database with no secret means the leaderboard never fills.
+   Both `pnpm dev` and `pnpm dev:rivet` read `.env.local`, so one line
+   covers both processes.
+5. Apply the migrations, then seed the tuning table:
 
 ```bash
 pnpm db:migrate
@@ -238,8 +247,9 @@ Everything auto-advances; the host (the first boss screen) can skip any phase.
 6. **Splash verdict** — the weighted headcounts from the four
    help/hinder events (tug teams say nothing about feelings) decide whether
    Justin is **BELOVED**, **GREASED**, or the office is **DIVIDED**. The top
-   masher is crowned champion; results persist to Neon; the champion becomes
-   the Head of Household to gang up on next match.
+   masher is crowned champion and their win persists to Neon. The **Head of
+   Household** on the poster is the *all-time wins leader* — win enough
+   matches and the person everyone gangs up on becomes you.
 
 ---
 
@@ -334,8 +344,11 @@ output, and register it in
 
 **Step 4 (optional) — tuning row.** Add your defaults to
 `DEFAULT_EVENT_PARAMS` in [`lib/game/config.ts`](lib/game/config.ts) and run
-`pnpm db:seed` so a `level_config` row exists to tune later. Skippable — the
-game falls back to your module's own defaults.
+`pnpm db:seed` so a `level_config` row exists to tune later. Skippable: an
+event with no entry anywhere falls back to its module's own `durationSec`
+plus generic force numbers (see `eventCtx` in `server/rivet/room.ts`) — but
+add the entry if your event reads custom params like `slipAmount`, because
+the generic fallback only carries the common three.
 
 Run `pnpm sim` afterwards. It plays the whole match, including your event, and
 sweeps every snapshot for anonymity leaks — the fastest way to find out your
@@ -346,9 +359,11 @@ new event broke a promise.
 ## Tuning without redeploying
 
 Every event's feel — duration, tap power, drift, slip rate, sink threshold —
-lives as numbers in the `level_config` table. At room start the actor fetches
-`GET /api/config` and **overrides** the compiled-in defaults from
-`lib/game/config.ts` with whatever's in the table. So:
+lives as numbers in the `level_config` table. The actor fetches
+`GET /api/config` when it wakes **and again every time the host presses
+Start**, overriding the compiled-in defaults from `lib/game/config.ts` with
+whatever's in the table. (Values are validated on the way in: non-numbers and
+zero/negative durations are ignored rather than trusted.) So:
 
 - Game too easy at the office party? Edit the row in the Neon console.
   The **next match** picks it up. No deploy.
@@ -376,9 +391,18 @@ layer is *incapable* of telling on you:
   freshly shuffled order, so timing can't unmask an author.
 - **The boss is a spectator.** Boss connections' taps and side-picks are
   refused server-side, so the big screen can't probe the room.
-- **Server-side rate cap.** ~12 counted taps/sec per connection, enforced by
-  the actor — a modified client gains nothing (and a tap pattern can't be
-  amplified into a fingerprint).
+- **Server-side rate cap.** ~12 counted taps/sec per *person* (keyed by
+  sticky id, so extra tabs don't multiply it), enforced by the actor — a
+  modified client gains nothing.
+- **No motion tells.** During the active window, the public per-player mash
+  counters are frozen at their round-start values (they catch up at the
+  outcome). Otherwise a snapshot recorder could pair "X's counter ticked up"
+  with "the hinder force moved" in the same 40 ms window and unmask X.
+
+One honest caveat, because aggregates are still aggregates: in a **tiny or
+unanimous** room, headcounts alone can be revealing — if all 3 of you helped,
+everyone knows how all 3 of you voted. That's arithmetic, not a leak; with an
+office-sized crowd it disappears.
 
 Don't take the README's word for it:
 
@@ -423,9 +447,14 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
   iframes (some code-hosting previews block storage). The game falls back to
   a per-tab identity and keeps working; on a real deployment or plain
   localhost this never appears.
-- **Leaderboard is blank / nothing persists.** No `DATABASE_URL` set (or
-  Neon is unreachable). That's the supported demo mode — matches still play.
-  Set `DATABASE_URL`, run `pnpm db:migrate && pnpm db:seed`, restart.
+- **Leaderboard is blank / nothing persists.** Either no `DATABASE_URL`
+  (that's the supported demo mode — matches still play), **or** the DB is
+  set but `INTERNAL_API_SECRET` isn't: `/api/results` refuses writes without
+  it and the actor logs `match NOT persisted`. Set both, run
+  `pnpm db:migrate && pnpm db:seed`, restart both processes.
+- **Port 6420 acts haunted — connects hang, phases frozen.** A previous
+  `rivet-engine` child process outlived its parent. `pkill -f rivet-engine`,
+  delete the `.rivetkit/` folder, and start `pnpm dev:rivet` again.
 - **Set `NEXT_PUBLIC_JUSTIN_PHOTO_URL` but Justin's face didn't change.**
   The URL must allow cross-origin image loading (CORS) — the PixiJS canvas
   loads it as a texture, and browsers block canvas access to images from
@@ -441,11 +470,13 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
 ```
 app/                      Next.js pages + API routes (this part runs on Vercel)
   page.tsx                landing page — join as player or boss, no room codes
-  play/page.tsx           the game screen (boss broadcast and phone controller)
+  play/page.tsx           the phone controller (side picker + MASH button)
+  boss/page.tsx           the big-screen broadcast (stage, host controls, feed)
   api/config/route.ts     GET  level_config tuning  → read by the actor at room start
   api/leaderboard/route.ts GET all-time leaderboard → actor + UI
   api/results/route.ts    POST match results ← the actor (guarded by INTERNAL_API_SECRET)
   globals.css             Tailwind v4 theme: aluminum, memo paper, stamps
+proxy.ts                  Next 16 request proxy: security headers + the v2 multi-room hook
 components/               React UI pieces (MashButton, SidePicker, GrievanceFeed, …)
 db/
   schema.ts               the Postgres tables (Drizzle) — note what's deliberately absent

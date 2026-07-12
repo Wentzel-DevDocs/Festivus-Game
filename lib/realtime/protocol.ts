@@ -136,6 +136,10 @@ export interface Snapshot {
 export interface YouMessage {
   isHost: boolean;
   role: Role;
+  /** Your display name AFTER server sanitation (profanity mask, trim). The
+   *  client uses this — not its locally saved input — to find itself in
+   *  the public roster. */
+  name: string;
   /** Your tug-of-war team, when assigned. */
   team: 0 | 1 | null;
   /** Echo of your current secret side pick this round (null = not picked). */

@@ -37,11 +37,12 @@ export default function SidePicker({
     const teamName = team === 0 ? "TEAM A" : team === 1 ? "TEAM B" : null;
     return (
       <div
-        // Team A gets pool blue, Team B gets grease yellow — matches the
-        // rope colors on the big screen so players can find "their" side.
+        // Team A is support-green, Team B grease-yellow — the SAME colors
+        // the tug-of-war scene uses for its team labels, so players can
+        // find "their" side on the big screen at a glance.
         className={`display-header rounded-md px-4 py-4 text-center text-xl ${
           team === 0
-            ? "bg-pool text-white"
+            ? "bg-support text-white"
             : team === 1
               ? "bg-grease text-aluminum-950"
               : "bg-aluminum-800 text-aluminum-300"

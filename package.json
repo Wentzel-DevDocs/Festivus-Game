@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Festivus-themed Jackbox-style party game: one boss on the big screen, everyone's phones deciding his fate.",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "packageManager": "pnpm@10.12.1",
   "scripts": {
@@ -15,7 +15,6 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx db/seed.ts",
@@ -24,17 +23,17 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
     "drizzle-orm": "^0.44.2",
-    "next": "^15.3.4",
+    "next": "^16.2.10",
     "pixi.js": "^8.6.6",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "rivetkit": "^2.3.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.10",
-    "@types/node": "^22.15.0",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "concurrently": "^9.1.2",
     "dotenv": "^16.5.0",
     "drizzle-kit": "^0.31.1",

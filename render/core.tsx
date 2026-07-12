@@ -168,13 +168,24 @@ export default function GameCanvas({
         const fx = fxQueue.current;
         fxQueue.current = [];
 
+        // Never lerp across a round boundary: the previous snapshot's view
+        // belongs to a DIFFERENT event (or phase), and blending its
+        // same-named numeric keys (progress, etc.) makes Justin teleport
+        // through half-blended positions for one frame.
+        const sameMoment =
+          prev != null &&
+          prev.phase === snap.phase &&
+          prev.eventMeta?.id === snap.eventMeta?.id;
+
         scene.update({
           snap,
-          view: lerpViews(prev?.eventView ?? null, snap.eventView, alpha),
-          justinProgress: prev
+          view: lerpViews(sameMoment ? (prev?.eventView ?? null) : null, snap.eventView, alpha),
+          justinProgress: sameMoment
             ? lerp(prev.justinProgress, snap.justinProgress, alpha)
             : snap.justinProgress,
-          tugPosition: prev ? lerp(prev.tugPosition, snap.tugPosition, alpha) : snap.tugPosition,
+          tugPosition: sameMoment
+            ? lerp(prev.tugPosition, snap.tugPosition, alpha)
+            : snap.tugPosition,
           dtMs,
           fx,
           width: a.renderer.width / a.renderer.resolution,

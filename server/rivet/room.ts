@@ -60,8 +60,6 @@ interface RosterEntry {
   name: string;
   stickyId: string;
   joinedAt: number;
-  /** Timestamps of COUNTED taps in the last second (the rate cap window). */
-  tapTimes: number[];
 }
 
 /** Everything ephemeral. Rebuilt from scratch whenever the actor wakes. */
@@ -83,6 +81,19 @@ interface Vars {
   roundResults: RoundResultPub[];
   approval: { support: number; hinder: number };
   effort: Map<string, { name: string; mashes: number }>;
+  /**
+   * Anti-side-channel: per-player mash counts FROZEN at round start. During
+   * event_active the snapshot shows these stale values, so a public
+   * per-player counter never moves in the same tick as a secret side's
+   * force — otherwise a snapshot recorder could pair "X's counter went up"
+   * with "hinder force went up" and unmask X. Live values return at outcome.
+   */
+  frozenEffort: Map<string, number>;
+  /**
+   * Rate-cap windows keyed by STICKY id (not connection), so opening five
+   * tabs still caps one human at MAX_COUNTED_TAPS_PER_SEC total.
+   */
+  tapWindows: Map<string, number[]>;
   matchStartedAt: number;
   matchSummary: MatchSummary | null;
   /** ── durable-world caches (refreshed via the Next.js API) ───────────── */
@@ -125,10 +136,21 @@ function currentEvent(c: any) {
 function eventCtx(c: any): EventTickCtx {
   const v = c.vars as Vars;
   const ev = currentEvent(c);
+  // Fall back sanely for event ids with no level_config row AND no entry in
+  // DEFAULT_EVENT_PARAMS (a brand-new module someone forgot to tune): use
+  // the module's own duration plus generic force numbers.
+  const params = ev
+    ? (v.eventParams[ev.id] ??
+      DEFAULT_EVENT_PARAMS[ev.id] ?? {
+        durationSec: ev.durationSec,
+        drift: 0.012,
+        tapPower: 0.011,
+      })
+    : DEFAULT_EVENT_PARAMS.poleRaise;
   return {
     playerCount: playerEntries(c).length,
     sideCounts: sideCounts(c),
-    params: ev ? v.eventParams[ev.id] : DEFAULT_EVENT_PARAMS.poleRaise,
+    params,
     fx: v.fx,
     rng: Math.random,
   };
@@ -176,6 +198,7 @@ function sendYou(c: any, connId: string) {
   const msg: YouMessage = {
     isHost: hostConnId(c) === connId,
     role: entry.role,
+    name: entry.name,
     team: v.teamBySticky.get(entry.stickyId) ?? null,
     side: token !== undefined ? (v.sideByToken.get(token) ?? null) : null,
   };
@@ -198,6 +221,9 @@ function onEventStart(c: any, index: number) {
   v.tokenBySticky = new Map();
   v.teamBySticky = new Map();
   v.fx = [];
+
+  // Freeze the public mash counters for the round (see Vars.frozenEffort).
+  v.frozenEffort = new Map([...v.effort.entries()].map(([id, e]) => [id, e.mashes]));
 
   if (ev.teamBased) assignTeams(c);
 
@@ -270,15 +296,24 @@ function onMatchEnd(c: any) {
   c.state.matchesPlayed++;
 }
 
-/** Wipe per-match data. Called by hostStart (new match from lobby/splash). */
-function resetMatch(c: any, now: number) {
+/**
+ * Wipe per-match data. Called by hostStart (new match from lobby/splash).
+ * keepGrievances: starting from the LOBBY must preserve the head-start
+ * grievances players were invited to submit there; only a splash restart
+ * (a genuinely new match) wipes them.
+ */
+function resetMatch(c: any, now: number, keepGrievances: boolean) {
   const v = c.vars as Vars;
-  v.grievances = [];
+  if (!keepGrievances) {
+    v.grievances = [];
+    v.grievanceCountBySticky = new Map();
+  }
   v.revealedFeed = [];
-  v.grievanceCountBySticky = new Map();
   v.roundResults = [];
   v.approval = { support: 0, hinder: 0 };
   v.effort = new Map();
+  v.frozenEffort = new Map();
+  v.tapWindows = new Map();
   v.matchSummary = null;
   v.eventState = null;
   v.sideByToken = new Map();
@@ -337,7 +372,7 @@ async function persistMatch(c: any, championStickyId: string | null) {
     grievances: v.revealedFeed.map((g) => g.text),
   };
   try {
-    await fetch(`${apiBase()}/api/results`, {
+    const res = await fetch(`${apiBase()}/api/results`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -345,7 +380,16 @@ async function persistMatch(c: any, championStickyId: string | null) {
       },
       body: JSON.stringify(payload),
     });
-    c.log.info("match persisted");
+    const body = await res.json().catch(() => null);
+    if (res.ok && body?.ok) {
+      c.log.info("match persisted");
+    } else {
+      // 401 = INTERNAL_API_SECRET mismatch; "no-db" = DATABASE_URL unset.
+      c.log.warn("match NOT persisted (game unaffected)", {
+        status: res.status,
+        reason: body?.reason ?? body?.error ?? "unknown",
+      });
+    }
   } catch (err) {
     c.log.warn("match persist failed (game unaffected)", { err: String(err) });
   }
@@ -370,10 +414,16 @@ function buildSnapshot(c: any, now: number): Snapshot {
     if (typeof view.pinPos === "number") justinProgress = 1 - view.pinPos;
   }
 
+  // During the active window, public per-player counters are FROZEN at
+  // their round-start values (see Vars.frozenEffort for why). Live values
+  // come back the moment the round resolves.
+  const active = v.session.phase === "event_active";
   const players: PlayerPub[] = playerEntries(c)
     .map(([, r]) => ({
       name: r.name,
-      mashes: v.effort.get(r.stickyId)?.mashes ?? 0,
+      mashes: active
+        ? (v.frozenEffort.get(r.stickyId) ?? 0)
+        : (v.effort.get(r.stickyId)?.mashes ?? 0),
       team: ev?.teamBased ? (v.teamBySticky.get(r.stickyId) ?? null) : null,
     }))
     .sort((a, b) => b.mashes - a.mashes);
@@ -440,6 +490,8 @@ export const festivusRoom = actor({
     roundResults: [],
     approval: { support: 0, hinder: 0 },
     effort: new Map(),
+    frozenEffort: new Map(),
+    tapWindows: new Map(),
     matchStartedAt: 0,
     matchSummary: null,
     leaderboard: [],
@@ -461,7 +513,6 @@ export const festivusRoom = actor({
       name: conn.state.name,
       stickyId: conn.state.stickyId,
       joinedAt: Date.now(),
-      tapTimes: [],
     });
 
     // Late joiner during tug-of-war: drop onto the smaller team; the
@@ -549,6 +600,7 @@ export const festivusRoom = actor({
       return {
         isHost: hostConnId(c) === c.conn.id,
         role: entry?.role ?? "player",
+        name: entry?.name ?? "",
         team: entry ? (v.teamBySticky.get(entry.stickyId) ?? null) : null,
         side: token !== undefined ? ((c.vars as Vars).sideByToken.get(token) ?? null) : null,
       };
@@ -609,13 +661,17 @@ export const festivusRoom = actor({
       }
       if (side === undefined) return { counted: false }; // no side picked yet
 
-      // Server-side rate cap: sliding 1s window per connection.
+      // Server-side rate cap: sliding 1s window per PERSON (sticky id).
+      // Keying by sticky id — not connection — means opening extra tabs
+      // does not multiply anyone's ceiling.
       const now = Date.now();
-      entry.tapTimes = entry.tapTimes.filter((t) => now - t < 1000);
-      if (entry.tapTimes.length >= GAME_CONFIG.MAX_COUNTED_TAPS_PER_SEC) {
+      const window = (v.tapWindows.get(entry.stickyId) ?? []).filter((t) => now - t < 1000);
+      if (window.length >= GAME_CONFIG.MAX_COUNTED_TAPS_PER_SEC) {
+        v.tapWindows.set(entry.stickyId, window);
         return { counted: false };
       }
-      entry.tapTimes.push(now);
+      window.push(now);
+      v.tapWindows.set(entry.stickyId, window);
 
       ev.onInput(v.eventState, side, { kind: "tap" }, eventCtx(c));
 
@@ -650,12 +706,17 @@ export const festivusRoom = actor({
     },
 
     /** Host: start the match from the lobby (or restart from the splash). */
-    hostStart: (c): { ok: boolean } => {
+    hostStart: async (c): Promise<{ ok: boolean }> => {
       const v = c.vars as Vars;
       if (hostConnId(c) !== c.conn.id) return { ok: false };
-      if (v.session.phase !== "lobby" && v.session.phase !== "splash") return { ok: false };
+      const phase = v.session.phase;
+      if (phase !== "lobby" && phase !== "splash") return { ok: false };
+      // Pick up any level_config retuning done since the actor woke — this
+      // is what makes "edit the DB row, next match uses it" actually true.
+      await loadEventParams(c);
       const now = Date.now();
-      resetMatch(c, now);
+      // Lobby starts keep the head-start grievances; splash restarts wipe.
+      resetMatch(c, now, phase === "lobby");
       startMatch(v.session, now, timing(c));
       return { ok: true };
     },
