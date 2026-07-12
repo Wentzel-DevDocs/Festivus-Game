@@ -1,0 +1,62 @@
+<!--
+  Example face asset. Host a real photo and set NEXT_PUBLIC_JUSTIN_PHOTO_URL
+  to use it in-game.
+
+  A deadpan office guy, hand-drawn in SVG so the repo ships with zero photos
+  of real people. 256x256, safe to scale.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Placeholder face: a tired, deadpan office worker in a white collar and red tie">
+
+  <!-- Aluminum-grey backdrop disc so the face reads on any background -->
+  <circle cx="128" cy="128" r="124" fill="#d7dce2"/>
+
+  <!-- Shoulders / shirt -->
+  <path d="M42 256 C50 210 86 192 128 192 C170 192 206 210 214 256 Z" fill="#f4f6f8"/>
+
+  <!-- White collar, two points meeting at the tie -->
+  <path d="M106 194 L128 220 L118 191 Z" fill="#ffffff" stroke="#c3c9d0" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M150 194 L128 220 L138 191 Z" fill="#ffffff" stroke="#c3c9d0" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- Red tie: knot, then the hint of the blade running off-frame -->
+  <path d="M120 198 L136 198 L132 212 L124 212 Z" fill="#b1362c"/>
+  <path d="M124 212 L132 212 L139 248 L128 256 L117 248 Z" fill="#b1362c"/>
+
+  <!-- Ears -->
+  <circle cx="56" cy="126" r="12" fill="#e4b184"/>
+  <circle cx="200" cy="126" r="12" fill="#e4b184"/>
+
+  <!-- Round head -->
+  <circle cx="128" cy="120" r="74" fill="#eebc90"/>
+
+  <!-- Side-part hair: arc over the crown, fringe swept from a part on the left -->
+  <path d="M54 120
+           A 74 74 0 0 1 202 120
+           C 202 98 190 86 176 84
+           C 152 80 122 82 106 87
+           L 99 74
+           C 78 82 60 98 54 120 Z" fill="#57432f"/>
+
+  <!-- Eyebrows: flat and unimpressed -->
+  <rect x="84" y="103" width="32" height="5" rx="2.5" fill="#57432f"/>
+  <rect x="140" y="103" width="32" height="5" rx="2.5" fill="#57432f"/>
+
+  <!-- Tired eyes: whites, small pupils, then heavy upper lids in skin tone -->
+  <ellipse cx="100" cy="124" rx="13" ry="8" fill="#ffffff"/>
+  <ellipse cx="156" cy="124" rx="13" ry="8" fill="#ffffff"/>
+  <circle cx="100" cy="126" r="4" fill="#3b3b3b"/>
+  <circle cx="156" cy="126" r="4" fill="#3b3b3b"/>
+  <!-- half-closed lids -->
+  <path d="M87 116 h26 v6 a13 6 0 0 1 -26 0 Z" fill="#eebc90"/>
+  <path d="M143 116 h26 v6 a13 6 0 0 1 -26 0 Z" fill="#eebc90"/>
+  <path d="M87 122 h26" stroke="#57432f" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M143 122 h26" stroke="#57432f" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- bags under the eyes -->
+  <path d="M90 136 q10 5 20 0" stroke="#d59d72" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M146 136 q10 5 20 0" stroke="#d59d72" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+
+  <!-- Nose: the bare minimum -->
+  <path d="M128 128 q5 12 -2 18" stroke="#d59d72" stroke-width="3" stroke-linecap="round" fill="none"/>
+
+  <!-- Mouth: perfectly flat. He has been to this meeting before. -->
+  <rect x="110" y="162" width="36" height="4" rx="2" fill="#8a5b40"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The bare aluminum pole. Very high strength-to-weight ratio. -->
+  <rect width="64" height="64" rx="12" fill="#16191c"/>
+  <rect x="28" y="8" width="8" height="44" rx="4" fill="#929ba3"/>
+  <rect x="30.5" y="8" width="3" height="44" rx="1.5" fill="#d4d9dd"/>
+  <rect x="18" y="52" width="28" height="5" rx="2.5" fill="#4b535b"/>
+</svg>

@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+/*
+ * Festivus theme: deadpan corporate memo meets holiday-party chaos.
+ * Tailwind v4 reads design tokens from this @theme block — these become
+ * utilities like `bg-aluminum-900`, `text-grievance`, `font-display`, etc.
+ */
+@theme {
+  /* Brushed-aluminum greys (dark stage → light highlights) */
+  --color-aluminum-950: #101214;
+  --color-aluminum-900: #16191c;
+  --color-aluminum-800: #23272b;
+  --color-aluminum-700: #33393f;
+  --color-aluminum-600: #4b535b;
+  --color-aluminum-500: #6b747d;
+  --color-aluminum-400: #929ba3;
+  --color-aluminum-300: #b8bfc6;
+  --color-aluminum-200: #d4d9dd;
+  --color-aluminum-100: #e8ebed;
+
+  /* Cool off-white memo paper */
+  --color-memo: #f4f2ec;
+  --color-memo-line: #d9d4c7;
+
+  /* Faction + accent colors */
+  --color-grievance: #c62f2f; /* grievance red */
+  --color-support: #3f9142;   /* support green */
+  --color-grease: #d9a514;    /* grease yellow */
+  --color-pool: #2e7fb8;      /* swim-sprint water */
+
+  /* Type: condensed uppercase headers + monospace data */
+  --font-display: "Arial Narrow", "Helvetica Neue", "Roboto Condensed", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
+html,
+body {
+  height: 100%;
+  background: var(--color-aluminum-950);
+  color: var(--color-aluminum-100);
+  /* Phones are controllers: never let double-tap zoom eat mash taps. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Visible keyboard focus everywhere (accessibility requirement). */
+:focus-visible {
+  outline: 3px solid var(--color-grease);
+  outline-offset: 2px;
+}
+
+/* ── Memo panel: off-white card with faint horizontal ruled lines ─────────── */
+
+.memo-panel {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 27px,
+      var(--color-memo-line) 27px,
+      var(--color-memo-line) 28px
+    ),
+    var(--color-memo);
+  color: var(--color-aluminum-900);
+  border: 1px solid var(--color-memo-line);
+  border-radius: 4px;
+}
+
+/* ── Brushed aluminum surface (subtle vertical grain) ─────────────────────── */
+
+.aluminum-panel {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025) 0px,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    linear-gradient(180deg, var(--color-aluminum-700), var(--color-aluminum-800));
+  border: 1px solid var(--color-aluminum-600);
+  border-radius: 6px;
+}
+
+/* ── "MANDATORY ATTENDANCE" rubber stamp ──────────────────────────────────── */
+
+.stamp {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  border: 3px double var(--color-grievance);
+  border-radius: 3px;
+  color: var(--color-grievance);
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transform: rotate(-6deg);
+  opacity: 0.85;
+  user-select: none;
+}
+
+/* ── Condensed uppercase display headers ──────────────────────────────────── */
+
+.display-header {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Motion: shake + pop, disabled under prefers-reduced-motion ───────────── */
+
+@keyframes screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-6px, 3px); }
+  40% { transform: translate(5px, -4px); }
+  60% { transform: translate(-4px, -2px); }
+  80% { transform: translate(3px, 4px); }
+}
+
+.shake {
+  animation: screen-shake 0.35s linear;
+}
+
+@keyframes ticker-scroll {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
