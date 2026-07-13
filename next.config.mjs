@@ -1,5 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Browsers need the PUBLIC (pk_) Rivet endpoint baked into the bundle.
+  // Accept either name: NEXT_PUBLIC_RIVET_ENDPOINT (Next.js convention) or
+  // RIVET_PUBLIC_ENDPOINT (the name the Rivet dashboard hands out). This
+  // `env` block inlines the value at BUILD time, so changing it on Vercel
+  // still requires a redeploy.
+  env: {
+    NEXT_PUBLIC_RIVET_ENDPOINT:
+      process.env.NEXT_PUBLIC_RIVET_ENDPOINT ?? process.env.RIVET_PUBLIC_ENDPOINT ?? "",
+  },
   // Justin's photo can live on any host, so allow remote images everywhere.
   // Tighten this to your own domain if you prefer.
   images: {
