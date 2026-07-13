@@ -37,20 +37,62 @@ const handler = async (request: Request) => {
     // Surface the real failure in the response body: platform runtime logs
     // are awkward to reach mid-debug, and rivetkit's errors are designed to
     // be shown (no secrets — we only report a BOOLEAN for the env var).
-    const e = err as Error & { code?: string; group?: string };
     return Response.json(
       {
         ok: false,
-        error: e?.message ?? String(err),
-        code: e?.code ?? null,
-        group: e?.group ?? null,
+        chain: causeChain(err),
         node: process.version,
         hasRivetEndpoint: Boolean(process.env.RIVET_ENDPOINT),
+        wasm: await wasmDiagnostics(),
       },
       { status: 500 },
     );
   }
 };
+
+/** Walk err.cause so network/fs failures reveal their target (host, path). */
+function causeChain(err: unknown): Record<string, unknown>[] {
+  const chain: Record<string, unknown>[] = [];
+  let c = err as (Error & Record<string, unknown>) | undefined;
+  let guard = 0;
+  while (c && guard++ < 8) {
+    chain.push({
+      name: c.name,
+      message: c.message,
+      code: c.code ?? null,
+      syscall: c.syscall ?? null,
+      address: c.address ?? null,
+      port: c.port ?? null,
+      path: c.path ?? null,
+      errors: Array.isArray(c.errors)
+        ? c.errors.slice(0, 3).map((e: Error & { code?: string }) => `${e?.code ?? ""} ${e?.message ?? e}`)
+        : null,
+    });
+    c = c.cause as typeof c;
+  }
+  return chain;
+}
+
+/** Can the deployed function even find rivetkit's WASM runtime on disk? */
+async function wasmDiagnostics(): Promise<Record<string, unknown>> {
+  try {
+    const { createRequire } = await import("node:module");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const req = createRequire(import.meta.url);
+    const rivetkitPath = req.resolve("rivetkit");
+    const wasmIndex = createRequire(rivetkitPath).resolve("@rivetkit/rivetkit-wasm");
+    const wasmFile = path.join(path.dirname(wasmIndex), "pkg", "rivetkit_wasm_bg.wasm");
+    return {
+      rivetkitPath,
+      wasmIndex,
+      wasmFile,
+      wasmFileExists: fs.existsSync(wasmFile),
+    };
+  } catch (err) {
+    return { resolveError: (err as Error)?.message ?? String(err) };
+  }
+}
 
 export {
   handler as GET,
