@@ -9,17 +9,20 @@ import { Assets, Container, Graphics, Sprite, Texture } from "pixi.js";
 /* ── Palette (mirrors app/globals.css tokens) ─────────────────────────────── */
 
 export const COLORS = {
-  aluminumLight: 0xd4d9dd,
-  aluminum: 0x929ba3,
-  aluminumDark: 0x33393f,
-  stage: 0x16191c,
-  memo: 0xf4f2ec,
-  grievance: 0xc62f2f,
-  support: 0x3f9142,
-  grease: 0xd9a514,
-  pool: 0x2e7fb8,
-  skin: 0xe8b98c,
-  drownBlue: 0x7ea6c9,
+  void: 0x070a0f,
+  aluminumLight: 0xaebbc4,
+  aluminum: 0x87939e,
+  aluminumDark: 0x33404b,
+  stage: 0x0d1219,
+  raised: 0x151d27,
+  memo: 0xf4f0e7,
+  grievance: 0xd74747,
+  support: 0x43c77a,
+  grease: 0xe8a941,
+  pool: 0x33a8c7,
+  skin: 0xd9a071,
+  skinLight: 0xf1c59a,
+  drownBlue: 0x72a9c4,
 } as const;
 
 /* ── Justin's head ────────────────────────────────────────────────────────── */
@@ -33,34 +36,76 @@ export function makeJustinHead(size: number, photoUrl: string): Container {
   const root = new Container();
   const r = size / 2;
 
+  // A portrait medallion gives the face a readable silhouette at phone size
+  // and a premium steel rim on the broadcast screen.
+  const shadow = new Graphics()
+    .circle(2, 4, r + 5)
+    .fill({ color: 0x000000, alpha: 0.48 });
+  const rim = new Graphics()
+    .circle(0, 0, r + 4)
+    .fill({ color: COLORS.void })
+    .circle(0, 0, r + 2)
+    .fill({ color: COLORS.aluminumDark })
+    .circle(0, 0, r - 1)
+    .fill({ color: COLORS.skin });
+
   const placeholder = new Container();
-  const face = new Graphics().circle(0, 0, r).fill({ color: COLORS.skin });
+  const face = new Graphics()
+    .circle(0, 0, r - 2)
+    .fill({ color: COLORS.skin })
+    .ellipse(-r * 0.22, -r * 0.26, r * 0.42, r * 0.28)
+    .fill({ color: COLORS.skinLight, alpha: 0.34 })
+    .ellipse(r * 0.23, r * 0.27, r * 0.3, r * 0.18)
+    .fill({ color: 0x8a5539, alpha: 0.14 });
   const hair = new Graphics()
-    .arc(0, -r * 0.15, r * 0.98, Math.PI * 1.05, Math.PI * 1.95)
-    .fill({ color: 0x4a3b2a });
-  const eyeL = new Graphics().circle(-r * 0.35, -r * 0.1, r * 0.09).fill({ color: 0x222222 });
-  const eyeR = new Graphics().circle(r * 0.35, -r * 0.1, r * 0.09).fill({ color: 0x222222 });
+    .arc(0, -r * 0.08, r * 0.92, Math.PI * 1.04, Math.PI * 1.96)
+    .fill({ color: 0x2b211c })
+    .ellipse(-r * 0.22, -r * 0.72, r * 0.58, r * 0.22)
+    .fill({ color: 0x4d392a, alpha: 0.65 });
+  const brows = new Graphics()
+    .moveTo(-r * 0.52, -r * 0.28)
+    .lineTo(-r * 0.18, -r * 0.24)
+    .moveTo(r * 0.18, -r * 0.24)
+    .lineTo(r * 0.52, -r * 0.28)
+    .stroke({ width: Math.max(2, r * 0.08), color: 0x3b2a21 });
+  const eyeL = new Graphics()
+    .ellipse(-r * 0.34, -r * 0.08, r * 0.1, r * 0.075)
+    .fill({ color: 0x15191d });
+  const eyeR = new Graphics()
+    .ellipse(r * 0.34, -r * 0.08, r * 0.1, r * 0.075)
+    .fill({ color: 0x15191d });
+  const nose = new Graphics()
+    .moveTo(0, -r * 0.02)
+    .lineTo(-r * 0.07, r * 0.24)
+    .lineTo(r * 0.06, r * 0.25)
+    .stroke({ width: Math.max(1.5, r * 0.055), color: 0x9a6548, alpha: 0.75 });
   const mouth = new Graphics()
-    .moveTo(-r * 0.3, r * 0.45)
-    .lineTo(r * 0.3, r * 0.45)
-    .stroke({ width: Math.max(2, r * 0.08), color: 0x5a4632 });
-  placeholder.addChild(face, hair, eyeL, eyeR, mouth);
-  root.addChild(placeholder);
+    .moveTo(-r * 0.26, r * 0.48)
+    .quadraticCurveTo(0, r * 0.42, r * 0.28, r * 0.49)
+    .stroke({ width: Math.max(2, r * 0.07), color: 0x694333 });
+  placeholder.addChild(face, hair, brows, eyeL, eyeR, nose, mouth);
+
+  const highlight = new Graphics()
+    .arc(0, 0, r + 1, Math.PI * 1.08, Math.PI * 1.72)
+    .stroke({ width: Math.max(1.5, r * 0.09), color: COLORS.memo, alpha: 0.72 })
+    .arc(0, 0, r + 3, Math.PI * 0.08, Math.PI * 0.64)
+    .stroke({ width: Math.max(1, r * 0.06), color: COLORS.grease, alpha: 0.52 });
+  root.addChild(shadow, rim, placeholder, highlight);
 
   if (photoUrl) {
     void Assets.load<Texture>({ src: photoUrl, loadParser: "loadTextures" })
       .then((texture) => {
         if (root.destroyed) return;
         const photo = new Sprite(texture);
-        const scale = size / Math.min(texture.width, texture.height);
+        const scale = (size - 4) / Math.min(texture.width, texture.height);
         photo.scale.set(scale);
         photo.anchor.set(0.5);
-        const mask = new Graphics().circle(0, 0, r).fill({ color: 0xffffff });
+        const mask = new Graphics().circle(0, 0, r - 2).fill({ color: 0xffffff });
         const wrap = new Container();
         wrap.addChild(photo, mask);
         photo.mask = mask;
         placeholder.visible = false;
-        root.addChild(wrap);
+        root.addChildAt(wrap, 3);
       })
       .catch(() => {
         /* keep the placeholder — never crash the party over a broken URL */
@@ -95,13 +140,34 @@ export function makeDrownedHead(size: number): Container {
  */
 export function makeBody(width: number, height: number): Container {
   const root = new Container();
-  const shirt = new Graphics()
+  const silhouette = new Graphics()
+    .roundRect(-width / 2 - 2, -2, width + 4, height + 5, width * 0.27)
+    .fill({ color: COLORS.void });
+  const coat = new Graphics()
     .roundRect(-width / 2, 0, width, height, width * 0.25)
-    .fill({ color: COLORS.memo });
+    .fill({ color: 0x26313b })
+    .roundRect(-width / 2 + 3, 3, width - 6, height - 6, width * 0.18)
+    .fill({ color: 0x151d27 });
+  const shoulders = new Graphics()
+    .roundRect(-width * 0.68, 2, width * 0.34, height * 0.2, width * 0.12)
+    .fill({ color: COLORS.aluminumDark })
+    .roundRect(width * 0.34, 2, width * 0.34, height * 0.2, width * 0.12)
+    .fill({ color: COLORS.aluminumDark });
+  const lapels = new Graphics()
+    .poly([-width * 0.39, 4, -width * 0.06, height * 0.42, 0, 3])
+    .fill({ color: 0x3b4853 })
+    .poly([width * 0.39, 4, width * 0.06, height * 0.42, 0, 3])
+    .fill({ color: 0x3b4853 });
   const tie = new Graphics()
-    .poly([0, 2, width * 0.09, height * 0.36, 0, height * 0.5, -width * 0.09, height * 0.36])
-    .fill({ color: COLORS.grievance });
-  root.addChild(shirt, tie);
+    .poly([0, 5, width * 0.1, height * 0.35, 0, height * 0.58, -width * 0.1, height * 0.35])
+    .fill({ color: COLORS.grievance })
+    .circle(0, height * 0.72, Math.max(1.5, width * 0.045))
+    .fill({ color: COLORS.grease, alpha: 0.7 });
+  const rimLight = new Graphics()
+    .moveTo(-width / 2 + 2, height * 0.2)
+    .lineTo(-width / 2 + 2, height * 0.76)
+    .stroke({ width: Math.max(1, width * 0.04), color: COLORS.aluminumLight, alpha: 0.35 });
+  root.addChild(silhouette, shoulders, coat, lapels, tie, rimLight);
   return root;
 }
 
@@ -110,11 +176,17 @@ export function makeBody(width: number, height: number): Container {
 export function makePole(height: number, width = 10): Container {
   const root = new Container();
   const pole = new Graphics().roundRect(-width / 2, -height, width, height, width / 2);
-  pole.fill({ color: COLORS.aluminum });
+  pole.fill({ color: COLORS.aluminumDark });
+  const mid = new Graphics()
+    .roundRect(-width * 0.34, -height, width * 0.68, height, width / 3)
+    .fill({ color: COLORS.aluminum });
   const sheen = new Graphics()
-    .roundRect(-width / 6, -height, width / 3, height, width / 6)
-    .fill({ color: COLORS.aluminumLight, alpha: 0.7 });
-  root.addChild(pole, sheen);
+    .roundRect(-width * 0.12, -height, width * 0.22, height, width / 8)
+    .fill({ color: COLORS.memo, alpha: 0.78 });
+  const shadowLine = new Graphics()
+    .roundRect(width * 0.25, -height, width * 0.16, height, width / 10)
+    .fill({ color: COLORS.void, alpha: 0.42 });
+  root.addChild(pole, mid, sheen, shadowLine);
   return root;
 }
 
@@ -220,7 +292,7 @@ export class ParticleBurst {
   }
 }
 
-export const CONFETTI_COLORS = [0xc62f2f, 0x3f9142, 0xd9a514, 0xd4d9dd, 0x2e7fb8];
+export const CONFETTI_COLORS = [0xd74747, 0x43c77a, 0xe8a941, 0xaebbc4, 0x33a8c7];
 
 /* ── Screen shake ─────────────────────────────────────────────────────────── */
 

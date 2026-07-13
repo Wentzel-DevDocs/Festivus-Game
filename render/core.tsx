@@ -30,6 +30,8 @@ export interface SceneServices {
   bossName: string;
   /** True when the viewer prefers reduced motion — tone down shakes/particles. */
   reducedMotion: boolean;
+  /** Lets scenes scale decorative effects down on battery-powered controllers. */
+  visualDensity: number;
 }
 
 export interface SceneUpdateArgs {
@@ -94,15 +96,23 @@ function lerpViews(prev: EventView | null, next: EventView | null, t: number): E
 export default function GameCanvas({
   room,
   className,
+  mode = "broadcast",
 }: {
   room: RoomApi;
   className?: string;
+  mode?: "broadcast" | "controller";
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const fxQueue = useRef<FxEvent[]>([]);
 
   // Collect fx as they arrive; the render loop drains them each frame.
-  useEffect(() => room.onFx((fx) => fxQueue.current.push(fx)), [room]);
+  useEffect(
+    () => room.onFx((fx) => fxQueue.current.push(fx)),
+    // bufferRef is stable for the lifetime of the realtime room. Depending on
+    // the RoomApi object itself would resubscribe on every 25 Hz snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [room.bufferRef],
+  );
 
   useEffect(() => {
     const host = hostRef.current;
@@ -116,6 +126,7 @@ export default function GameCanvas({
     const services: SceneServices = {
       photoUrl: GAME_CONFIG.JUSTIN_PHOTO_URL,
       bossName: GAME_CONFIG.BOSS_NAME,
+      visualDensity: mode === "controller" ? 0.6 : 1,
       reducedMotion:
         typeof window !== "undefined" &&
         window.matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -124,10 +135,10 @@ export default function GameCanvas({
     (async () => {
       const a = new Application();
       await a.init({
-        background: 0x16191c,
+        backgroundAlpha: 0,
         resizeTo: host,
         antialias: true,
-        resolution: Math.min(2, window.devicePixelRatio || 1),
+        resolution: Math.min(mode === "controller" ? 1.5 : 2, window.devicePixelRatio || 1),
         autoDensity: true,
       });
       if (destroyed) {
@@ -204,7 +215,7 @@ export default function GameCanvas({
       host.replaceChildren();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room.bufferRef]);
+  }, [mode, room.bufferRef]);
 
-  return <div ref={hostRef} className={className} aria-hidden="true" />;
+  return <div ref={hostRef} className={`game-stage ${className ?? ""}`} aria-hidden="true" />;
 }

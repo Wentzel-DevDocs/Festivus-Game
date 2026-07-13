@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-import { useRoom, phaseTimerMs } from "@/lib/realtime/useRoom";
+import { useRoom } from "@/lib/realtime/useRoom";
 import type { JoinParams } from "@/lib/realtime/protocol";
 import type { FxEvent } from "@/lib/game/engine/types";
 import type { Phase } from "@/lib/game/engine/session";
@@ -47,14 +47,6 @@ const FX_TO_STING: Record<FxEvent["type"], Sting> = {
   lose: "lose",
 };
 
-/** ms → "M:SS" for the phase timer readout. */
-function formatTimer(ms: number): string {
-  const totalSec = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
 /* ── The page ─────────────────────────────────────────────────────────────── */
 
 export default function BossPage() {
@@ -68,6 +60,7 @@ export default function BossPage() {
   const room = useRoom(join);
   const snapshot = room.snapshot;
   const phase = snapshot?.phase ?? null;
+  const joinIsPriority = phase === null || phase === "lobby";
 
   // The join URL people type into their phones. window.location only exists
   // in the browser, so we read it after mount — rendering it directly would
@@ -75,14 +68,6 @@ export default function BossPage() {
   const [origin, setOrigin] = useState("");
   useEffect(() => {
     setOrigin(window.location.origin);
-  }, []);
-
-  // Re-render 4×/second so the phase timer text counts down smoothly even
-  // between throttled snapshot updates.
-  const [, setTimerTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTimerTick((t) => t + 1), 250);
-    return () => clearInterval(id);
   }, []);
 
   /* ── Sound wiring (this screen is usually the room's audio) ─────────── */
@@ -116,7 +101,9 @@ export default function BossPage() {
       room.onFx((fx) => {
         sound.play(FX_TO_STING[fx.type]);
       }),
-    [room],
+    // bufferRef is stable; RoomApi is rebuilt for each realtime snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [room.bufferRef],
   );
 
   // Finale choreography: crank on entry, pop ~2.5 s later (in step with the
@@ -146,30 +133,25 @@ export default function BossPage() {
     hostAction = () => room.hostStart();
   }
 
-  /* ── Derived display data ──────────────────────────────────────────── */
-
-  const timerMs = phaseTimerMs(snapshot);
-  const showTimer = snapshot !== null && snapshot.phaseEndsAt > 0 && timerMs > 0;
-
   /* ── Render ────────────────────────────────────────────────────────── */
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[1600px] flex-col gap-4 p-4">
+    <main className="broadcast-shell mx-auto flex min-h-dvh w-full max-w-[1800px] flex-col gap-4 p-4 lg:p-5">
       {/* a. Header bar. */}
-      <header className="flex flex-wrap items-center gap-4">
-        <h1 className="display-header text-2xl tracking-wide lg:text-3xl">
-          Justin&apos;s Feats of Strength
-        </h1>
+      <header className="forge-panel flex flex-wrap items-center gap-4 p-3">
+        <div className="brand-lockup">
+          <span className="brand-sigil" aria-hidden="true" />
+          <div>
+            <p className="eyebrow">Live broadcast</p>
+            <h1 className="display-header text-xl tracking-wide lg:text-2xl">
+              Justin&apos;s Feats of Strength
+            </h1>
+          </div>
+        </div>
         <Stamp>MANDATORY ATTENDANCE</Stamp>
         <div className="min-w-0 flex-1">
           <PhaseBanner snapshot={snapshot} />
         </div>
-        {/* Countdown/timer readout, refreshed by the 250 ms tick above. */}
-        {showTimer && (
-          <span className="font-mono text-2xl tabular-nums text-grease" aria-label="time remaining">
-            {formatTimer(timerMs)}
-          </span>
-        )}
         <button
           type="button"
           onClick={toggleMute}
@@ -182,28 +164,56 @@ export default function BossPage() {
       </header>
 
       {/* Stage + right rail. Single column on small screens, split on TV. */}
-      <div className="grid flex-1 gap-4 lg:grid-cols-[1fr_340px]">
+      <div className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_clamp(310px,22vw,380px)]">
         {/* ── b. Main: the stage + host controls ─────────────────────── */}
         <div className="flex min-w-0 flex-col gap-3">
           {/* `relative` so phase overlays can sit on top of the canvas. */}
-          <div className="relative">
+          <div className="stage-frame relative">
             <GameCanvas
               room={room}
-              className="w-full h-[52vh] lg:h-[62vh] rounded-lg overflow-hidden"
+              mode="broadcast"
+              className="boss-stage w-full"
             />
+
+            <div className="stage-chrome pointer-events-none absolute inset-0 z-[3]" aria-hidden="true">
+              <div className="absolute left-3 top-3 flex flex-wrap gap-2 lg:left-4 lg:top-4">
+                <span className="hud-chip live-chip">
+                  <span className="live-beacon" /> Citadel live
+                </span>
+                <span className="hud-chip">Room 01</span>
+              </div>
+              <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-3 lg:bottom-4 lg:left-4 lg:right-4">
+                <span className="hud-chip">
+                  {snapshot?.playerCount ?? 0} raider{(snapshot?.playerCount ?? 0) === 1 ? "" : "s"} connected
+                </span>
+                <span className="hud-chip hidden sm:inline-flex">
+                  {room.status === "connected" ? "Realtime uplink stable" : "Reconnecting uplink"}
+                </span>
+              </div>
+            </div>
 
             {/* d. Blind-submit overlay: a live COUNT only — the grievance
                 texts stay hidden until the reveal. */}
             {phase === "grievance_write" && snapshot && (
-              <div className="absolute inset-0 flex items-center justify-center p-6">
-                <div className="memo-panel p-8 text-center">
-                  <p className="display-header text-4xl tracking-wide">
+              <div className="absolute inset-0 z-[4] flex items-center justify-center bg-aluminum-950/35 p-6 backdrop-blur-[2px]">
+                <div className="grievance-seal forge-panel w-full max-w-2xl p-8 text-center lg:p-10">
+                  <p className="eyebrow">Anonymous incident intake</p>
+                  <p className="display-header mt-3 text-4xl tracking-wide lg:text-5xl">
                     {snapshot.grievanceCount} grievance
                     {snapshot.grievanceCount === 1 ? "" : "s"} and counting…
                   </p>
-                  <p className="mt-2 text-sm text-aluminum-600">
-                    Submissions are anonymous. Texts are sealed until the reveal.
+                  <div className="hud-rule my-5" />
+                  <p className="mx-auto max-w-xl text-sm text-aluminum-300 lg:text-base">
+                    Reports are sealed until the postmortem. Authorship is discarded
+                    at intake and never enters the broadcast payload.
                   </p>
+                  <div className="mt-5 flex justify-center gap-2" aria-hidden="true">
+                    <span className="status-rune status-rune--active" />
+                    <span className="status-rune status-rune--active" />
+                    <span className="status-rune status-rune--active" />
+                    <span className="status-rune" />
+                    <span className="status-rune" />
+                  </div>
                 </div>
               </div>
             )}
@@ -211,7 +221,7 @@ export default function BossPage() {
             {/* e. Splash overlay: the match summary over a dimmed stage,
                 with the full leaderboard underneath it. */}
             {phase === "splash" && snapshot && (
-              <div className="absolute inset-0 overflow-y-auto bg-aluminum-950/80 p-6">
+              <div className="results-overlay absolute inset-0 z-[5] overflow-y-auto bg-aluminum-950/88 p-4 backdrop-blur-md lg:p-6">
                 <div className="mx-auto flex max-w-2xl flex-col gap-4">
                   <SplashCard summary={snapshot.matchSummary} />
                   <Leaderboard
@@ -227,16 +237,16 @@ export default function BossPage() {
           {/* HOST CONTROL strip. A boss screen is always the host, but we
               still gate on the server's word (room.you.isHost). */}
           {snapshot && room.you?.isHost && (
-            <div className="aluminum-panel flex flex-wrap items-center gap-4 p-3">
+            <div className="forge-panel flex flex-wrap items-center gap-4 p-3">
               <button
                 type="button"
                 onClick={hostAction}
-                className="display-header min-h-12 rounded bg-grievance px-6 py-3 text-lg tracking-widest text-white"
+                className="display-header min-h-12 rounded-md border border-grievance bg-grievance/15 px-6 py-3 text-lg text-grievance transition-colors hover:bg-grievance hover:text-white"
               >
                 {hostLabel}
               </button>
               <p className="text-xs text-aluminum-400">
-                auto-advance is on; you only need Start.
+                Auto-advance armed · skip is the incident-response override.
               </p>
             </div>
           )}
@@ -245,22 +255,30 @@ export default function BossPage() {
         {/* ── c. Right rail ──────────────────────────────────────────── */}
         <aside className="flex min-w-0 flex-col gap-4">
           {/* Join instructions — shown BIG. This URL is the whole onboarding. */}
-          <div className="memo-panel p-4">
-            <h2 className="display-header text-sm tracking-widest text-aluminum-700">
-              Join in
-            </h2>
-            <p className="mt-1 text-sm text-aluminum-800">open</p>
-            <p className="break-all font-mono text-2xl font-bold text-aluminum-900">
+          <div className={`forge-panel join-card p-4 ${joinIsPriority ? "join-card--priority" : "join-card--compact"}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="eyebrow">Raid uplink</h2>
+                <p className="mt-1 text-sm text-aluminum-400">
+                  {joinIsPriority ? "Open on your phone to enter the war room" : "Late joins remain open"}
+                </p>
+              </div>
+              <span className="hud-chip">No app</span>
+            </div>
+            <p className={`${joinIsPriority ? "mt-4 text-2xl lg:text-3xl" : "mt-3 text-base"} break-all font-mono font-bold text-aluminum-100`}>
               {/* Empty during the server render; fills in right after mount. */}
               {origin || "…"}
             </p>
-            <p className="text-sm text-aluminum-800">on your phone</p>
-            <p className="mt-2 font-mono text-xs text-aluminum-600">
-              {snapshot?.playerCount ?? 0} player
-              {(snapshot?.playerCount ?? 0) === 1 ? "" : "s"} ·{" "}
-              {snapshot?.bossCount ?? 0} screen
-              {(snapshot?.bossCount ?? 0) === 1 ? "" : "s"}
-            </p>
+            <div className="hud-rule my-3" />
+            <div className="flex items-center justify-between gap-3 font-mono text-xs text-aluminum-400">
+              <span>
+                {snapshot?.playerCount ?? 0} raider
+                {(snapshot?.playerCount ?? 0) === 1 ? "" : "s"} ·{" "}
+                {snapshot?.bossCount ?? 0} broadcast
+                {(snapshot?.bossCount ?? 0) === 1 ? "" : "s"}
+              </span>
+              <span className="text-support">Uplink open</span>
+            </div>
           </div>
 
           <Leaderboard

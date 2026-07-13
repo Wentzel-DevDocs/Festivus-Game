@@ -22,7 +22,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { useRoom, phaseTimerMs, type RoomApi, type RoomStatus } from "@/lib/realtime/useRoom";
+import { useRoom, type RoomApi, type RoomStatus } from "@/lib/realtime/useRoom";
 import type { JoinParams, Snapshot } from "@/lib/realtime/protocol";
 import type { FxEvent } from "@/lib/game/engine/types";
 import type { Phase } from "@/lib/game/engine/session";
@@ -59,12 +59,12 @@ const FX_TO_STING: Record<FxEvent["type"], Sting> = {
 
 /** Deadpan filler for the ticker when there are no grievances to show. */
 const IDLE_TICKER_LINES = [
-  "The pole requires no decoration.",
-  "Attendance is mandatory.",
-  "The tinsel is distracting.",
-  "Please direct all complaints to the airing of grievances.",
-  "A high strength-to-weight ratio.",
-  "Dinner will proceed as scheduled.",
+  "Production is stable until morale improves.",
+  "No sprint points were allocated to the aluminum pole.",
+  "This incident is not reproducible in staging.",
+  "Please attach logs before blaming the grease.",
+  "Attendance is mandatory. Cameras remain optional.",
+  "The deploy window closes when the grievances begin.",
 ];
 
 /* ── Small presentational helpers (local to this page) ────────────────────── */
@@ -73,7 +73,7 @@ const IDLE_TICKER_LINES = [
 function ConnectionDot({ status }: { status: RoomStatus }) {
   if (status === "connected") {
     return (
-      <span className="flex items-center gap-1.5 text-xs text-aluminum-400">
+      <span className="controller-connection controller-connection--online flex items-center gap-1.5 text-xs text-aluminum-400">
         <span className="h-2.5 w-2.5 rounded-full bg-support" aria-hidden="true" />
         <span className="sr-only">connected</span>
       </span>
@@ -81,17 +81,58 @@ function ConnectionDot({ status }: { status: RoomStatus }) {
   }
   if (status === "connecting") {
     return (
-      <span className="flex items-center gap-1.5 text-xs text-aluminum-400">
+      <span className="controller-connection controller-connection--pending flex items-center gap-1.5 text-xs text-aluminum-400">
         <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-grease" aria-hidden="true" />
         <span className="sr-only">connecting</span>
       </span>
     );
   }
   return (
-    <span className="flex items-center gap-1.5 text-xs text-grievance">
+    <span className="controller-connection controller-connection--offline flex items-center gap-1.5 text-xs text-grievance">
       <span className="h-2.5 w-2.5 rounded-full bg-grievance" aria-hidden="true" />
       reconnecting…
     </span>
+  );
+}
+
+/**
+ * Compact shared stage for non-event phases. The Pixi backdrop keeps the
+ * controller in the same world as the broadcast without crowding out the
+ * phase's actual job (typing, reading, or reviewing results).
+ */
+function AmbientStage({
+  room,
+  kicker,
+  title,
+  detail,
+  className = "",
+}: {
+  room: RoomApi;
+  kicker: string;
+  title: string;
+  detail: string;
+  className?: string;
+}) {
+  return (
+    <section
+      className={`controller-ambient-stage game-stage relative h-40 overflow-hidden ${className}`}
+      aria-label={title}
+    >
+      <GameCanvas
+        room={room}
+        mode="controller"
+        className="controller-ambient-canvas absolute inset-0 h-full w-full"
+      />
+      <div className="controller-stage-copy pointer-events-none absolute inset-x-0 bottom-0 z-10 p-4">
+        <p className="controller-stage-kicker eyebrow">{kicker}</p>
+        <h2 className="controller-stage-title display-header mt-1 text-xl text-aluminum-100">
+          {title}
+        </h2>
+        <p className="controller-stage-detail mt-1 max-w-sm text-xs text-aluminum-300">
+          {detail}
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -100,7 +141,7 @@ function JustinBar({ progress }: { progress: number }) {
   const pct = Math.round(Math.max(0, Math.min(1, progress)) * 100);
   return (
     <div
-      className="h-2 w-full overflow-hidden rounded bg-aluminum-800"
+      className="progress-rail w-full"
       role="progressbar"
       aria-label={`${GAME_CONFIG.BOSS_NAME}'s progress`}
       aria-valuenow={pct}
@@ -110,7 +151,7 @@ function JustinBar({ progress }: { progress: number }) {
       {/* Snapshots arrive ~10×/sec; a 100 ms linear transition smooths the
           steps so the bar glides instead of jumping. */}
       <div
-        className="h-full bg-support transition-[width] duration-100 ease-linear"
+        className="h-full transition-[width] duration-100 ease-linear"
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -163,51 +204,95 @@ function GrievanceComposer({
   }
 
   return (
-    <div className="memo-panel flex flex-col gap-2 p-4">
-      {note && <p className="text-xs italic text-aluminum-600">{note}</p>}
-      <label
-        htmlFor="grievance-text"
-        className="display-header text-xs tracking-widest text-aluminum-700"
-      >
-        Air a grievance (anonymous, really — there is no author column)
-      </label>
-      <textarea
-        id="grievance-text"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        maxLength={GAME_CONFIG.MAX_GRIEVANCE_LENGTH}
-        rows={3}
-        placeholder="I got a lot of problems with you people…"
-        className="w-full resize-none rounded border border-memo-line bg-white px-3 py-2 text-base text-aluminum-900 placeholder:text-aluminum-400"
-      />
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs text-aluminum-600">
-          {remaining} of {GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER} left
+    <form
+      className="controller-grievance-composer forge-panel flex flex-col gap-4 p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <div className="controller-grievance-header flex items-start justify-between gap-3">
+        <div>
+          <p className="eyebrow">Anonymous feedback channel</p>
+          <h2 className="display-header mt-1 text-xl text-aluminum-100">
+            Air a grievance
+          </h2>
+          {note && <p className="mt-1 text-xs text-aluminum-400">{note}</p>}
+        </div>
+        <span className="hud-chip shrink-0" aria-label={`${remaining} submissions remaining`}>
+          {remaining}/{GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER} left
         </span>
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={!text.trim() || remaining <= 0}
-          className="display-header min-h-12 rounded bg-grievance px-5 py-2 tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Submit
-        </button>
       </div>
 
-      {/* One receipt line per accepted grievance — proof it went through. */}
-      {sent.length > 0 && (
-        <ul className="space-y-0.5 text-xs text-support">
-          {sent.map((g, i) => (
-            <li key={i}>sent ✓ — &ldquo;{g.length > 40 ? `${g.slice(0, 40)}…` : g}&rdquo;</li>
-          ))}
-        </ul>
-      )}
-      {error && <p className="text-xs text-grievance">{error}</p>}
-
-      <p className="text-xs text-aluminum-600">
-        {grievanceCount} grievance{grievanceCount === 1 ? "" : "s"} submitted so far
+      <p
+        id="grievance-privacy"
+        className="controller-grievance-privacy rounded-lg border border-support/20 bg-support/5 px-3 py-2 text-xs leading-5 text-aluminum-300"
+      >
+        Grievance identity is never collected—there is no author field in the
+        live room or database. The room sees only a sealed count until reveal.
       </p>
-    </div>
+
+      <div className="flex flex-col gap-2">
+        <label
+          htmlFor="grievance-text"
+          className="display-header text-xs tracking-widest text-aluminum-300"
+        >
+          What should the all-hands hear?
+        </label>
+        <textarea
+          id="grievance-text"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          maxLength={GAME_CONFIG.MAX_GRIEVANCE_LENGTH}
+          rows={4}
+          aria-describedby="grievance-privacy grievance-count"
+          placeholder="The sprint was called focused, then six priorities entered production…"
+          className="controller-grievance-input w-full resize-none rounded-lg border border-aluminum-600 bg-aluminum-950/80 px-3 py-3 text-base text-aluminum-100 placeholder:text-aluminum-500"
+        />
+        <div
+          id="grievance-count"
+          className="controller-grievance-meta flex items-center justify-between gap-3 font-mono text-[11px] text-aluminum-400"
+        >
+          <span>
+            {grievanceCount} sealed room-wide
+          </span>
+          <span>
+            {text.length}/{GAME_CONFIG.MAX_GRIEVANCE_LENGTH}
+          </span>
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        disabled={!text.trim() || remaining <= 0}
+        className="controller-grievance-submit action-plate display-header min-h-12 w-full border border-grievance px-5 py-3 tracking-widest text-aluminum-100 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Seal grievance
+      </button>
+
+      {/* Local receipts prove acceptance without keeping the grievance copy
+          visible over somebody's shoulder. The server still stores no author. */}
+      {sent.length > 0 && (
+        <div
+          className="controller-grievance-receipts border-t border-aluminum-700 pt-3"
+          aria-live="polite"
+        >
+          <p className="eyebrow mb-2">Private receipts on this device</p>
+          <ul className="grid grid-cols-2 gap-2 font-mono text-xs text-support">
+            {sent.map((_, index) => (
+              <li key={index} className="rounded border border-support/20 bg-support/5 px-2 py-1.5">
+                Grievance {String(index + 1).padStart(2, "0")} · sealed ✓
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {error && (
+        <p className="text-xs text-grievance" role="alert">
+          {error}
+        </p>
+      )}
+    </form>
   );
 }
 
@@ -232,49 +317,77 @@ function PhasePanel({
   switch (phase) {
     case "lobby":
       return (
-        <div className="flex flex-col gap-3">
-          <div className="memo-panel p-4">
-            <p className="display-header text-lg tracking-wide">
-              Waiting for the host to start.
-            </p>
-            <p className="mt-1 font-mono text-sm text-aluminum-600">
-              {snapshot.playerCount} player{snapshot.playerCount === 1 ? "" : "s"} in the room
-            </p>
+        <div className="controller-lobby flex flex-col gap-3">
+          <AmbientStage
+            room={room}
+            kicker="All-hands room online"
+            title="Waiting on the host deploy"
+            detail={`${snapshot.playerCount} player${snapshot.playerCount === 1 ? "" : "s"} connected · queue anonymous feedback while the room warms up.`}
+          />
+          <div className="controller-lobby-panel forge-panel p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="eyebrow">Lobby telemetry</p>
+                <p className="display-header mt-1 text-lg text-aluminum-100">
+                  {snapshot.playerCount} player{snapshot.playerCount === 1 ? "" : "s"} ready
+                </p>
+              </div>
+              <span className="hud-chip">Live socket</span>
+            </div>
             {/* Fallback for phone-only parties with no big screen plugged in:
                 the first player becomes host and can start from here. */}
             {room.you?.isHost && (
               <button
                 type="button"
                 onClick={() => room.hostStart()}
-                className="display-header mt-3 min-h-12 w-full rounded bg-grievance px-4 py-3 text-lg tracking-widest text-white"
+                className="action-plate display-header mt-4 min-h-12 w-full border border-grievance px-4 py-3 text-lg tracking-widest text-aluminum-100"
               >
-                Start the feats
+                Ship the feats
               </button>
             )}
           </div>
           <GrievanceComposer
             room={room}
             grievanceCount={snapshot.grievanceCount}
-            note="get a head start on your grievances"
+            note="Open early for anyone who already has release notes."
           />
         </div>
       );
 
     case "grievance_write":
-      return <GrievanceComposer room={room} grievanceCount={snapshot.grievanceCount} />;
+      return (
+        <div className="controller-grievance-intake flex flex-col gap-3">
+          <AmbientStage
+            room={room}
+            kicker="Intake window open"
+            title="The anonymous channel is live"
+            detail="No attribution log. No identity field. Submit the feedback that somehow missed the retro."
+            className="h-36"
+          />
+          <GrievanceComposer room={room} grievanceCount={snapshot.grievanceCount} />
+        </div>
+      );
 
     case "grievance_reveal":
       return (
-        <div className="flex flex-col gap-3">
-          <p className="display-header text-center text-lg tracking-wide text-aluminum-300">
-            Eyes on the big screen.
-          </p>
+        <div className="controller-reveal flex flex-col gap-3">
+          <AmbientStage
+            room={room}
+            kicker="Shuffled release"
+            title="The receipts are live"
+            detail="Authors were never recorded. Follow the reveal here or put eyes on the broadcast."
+            className="h-36"
+          />
+          <div className="hud-chip self-center" role="status">
+            Shuffled order · zero attribution
+          </div>
           <GrievanceFeed items={snapshot.grievanceFeed} canHide={false} />
         </div>
       );
 
     case "event_countdown":
-    case "event_active": {
+    case "event_active":
+    case "event_outcome": {
       const teamBased = meta?.teamBased ?? false;
       const picked = room.you?.side ?? null;
       const team = room.you?.team ?? null;
@@ -282,77 +395,129 @@ function PhasePanel({
       // your secret pick in solo events, your public team in tug-of-war.
       const canMash =
         phase === "event_active" && (teamBased ? team !== null : picked !== null);
-      const countdownSec = Math.ceil(phaseTimerMs(snapshot) / 1000);
 
-      return (
-        <div className="flex flex-col gap-3">
-          {/* Justin responds within a tick — the phone should show it. */}
-          <JustinBar progress={snapshot.justinProgress} />
-
-          {phase === "event_countdown" && (
-            <p
-              className="display-header text-center text-7xl tabular-nums text-grease"
-              aria-live="polite"
-            >
-              {countdownSec}
-            </p>
-          )}
-
-          <SidePicker
-            labels={meta?.sideLabels ?? ["Help", "Hinder"]}
-            picked={picked}
-            team={team}
-            teamBased={teamBased}
-            onPick={(s) => void room.pickSide(s)}
-          />
-          <MashButton enabled={canMash} onTap={() => room.tap()} />
-        </div>
-      );
-    }
-
-    case "event_outcome": {
-      // The server appends the finished round to roundResults; the last
-      // entry is the one that just ended.
+      // The server appends the finished round to roundResults; the last entry
+      // is the one that just ended. Mash totals are public leaderboard data.
       const last = snapshot.roundResults[snapshot.roundResults.length - 1];
       const labels = meta?.sideLabels ?? ["Support", "Hinder"];
-      // Finding yourself by name is fine HERE: mash totals are public
-      // leaderboard data. Side picks are the secret, and those never
-      // appear per-player anywhere in the snapshot.
       const myMashes = snapshot.players.find((p) => p.name === myName)?.mashes ?? 0;
+      const hasAssignment = teamBased ? team !== null : picked !== null;
+      const assignmentLabel = teamBased
+        ? team === 0
+          ? "Team A assigned"
+          : team === 1
+            ? "Team B assigned"
+            : "Team assignment pending"
+        : picked !== null
+          ? `${labels[picked]} locked · secret`
+          : "Pick a side to unlock mashing";
 
       return (
-        <div className="memo-panel p-4 text-center">
-          <p className="display-header text-sm tracking-widest text-aluminum-600">
-            {last?.eventName ?? meta?.name ?? "Event"}
-          </p>
-          <p className="display-header mt-1 text-2xl tracking-wide">
-            {last
-              ? last.winner === "support"
-                ? `${labels[0]} carried it!`
-                : `${labels[1]} got him!`
-              : "Tallying…"}
-          </p>
-          <p className="mt-2 font-mono text-sm text-aluminum-600">
-            Your mashes this match: {myMashes}
-          </p>
+        <div className="controller-event-grid flex flex-col gap-3">
+          <div className="flex min-w-0 flex-col gap-2">
+            {/* Every controller now renders the same aggregate-only scene as
+                the broadcast. It never receives or branches on anyone's side. */}
+            <GameCanvas
+              room={room}
+              mode="controller"
+              className="controller-event-stage game-stage player-stage w-full"
+            />
+            <div className="controller-progress-panel forge-panel px-3 py-2">
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <span className="eyebrow">Aggregate progress</span>
+                <span className="font-mono text-[10px] text-aluminum-400">
+                  {Math.round(snapshot.justinProgress * 100)}%
+                </span>
+              </div>
+              <JustinBar progress={snapshot.justinProgress} />
+            </div>
+          </div>
+
+          <div className="controller-event-actions flex min-w-0 flex-col justify-center gap-3">
+            {phase === "event_outcome" ? (
+              <div
+                className="controller-outcome-card forge-panel border-grease/30 p-4 text-center"
+                aria-live="polite"
+              >
+                <p className="eyebrow">Round shipped · official result</p>
+                <p className="display-header mt-1 text-2xl text-aluminum-100">
+                  {last
+                    ? last.winner === "support"
+                      ? `${labels[0]} carried it!`
+                      : `${labels[1]} got him!`
+                    : "Tallying…"}
+                </p>
+                <p className="mt-2 font-mono text-xs text-aluminum-400">
+                  Your mashes this match · {myMashes}
+                </p>
+              </div>
+            ) : (
+              <>
+                {phase === "event_active" && hasAssignment ? (
+                  <div
+                    className="controller-assignment hud-chip min-h-11 justify-center text-center"
+                    role="status"
+                  >
+                    {assignmentLabel}
+                  </div>
+                ) : (
+                  <SidePicker
+                    labels={meta?.sideLabels ?? ["Help", "Hinder"]}
+                    picked={picked}
+                    team={team}
+                    teamBased={teamBased}
+                    onPick={(side) => void room.pickSide(side)}
+                  />
+                )}
+
+                {phase === "event_active" ? (
+                  <MashButton enabled={canMash} onTap={() => room.tap()} />
+                ) : (
+                  <div className="controller-countdown-note forge-panel px-4 py-3 text-center">
+                    <p className="eyebrow">Input gate armed</p>
+                    <p className="mt-1 text-sm text-aluminum-300">
+                      Lock your side now. Mashing opens when the countdown clears.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       );
     }
 
     case "finale":
       return (
-        <div className="flex flex-col gap-2">
-          <p className="display-header text-center text-lg tracking-wide text-aluminum-300">
-            Watch the box. 🎁
-          </p>
+        <div className="controller-finale flex flex-col gap-3">
+          <div className="text-center">
+            <p className="eyebrow">Final release in progress</p>
+            <h2 className="display-header mt-1 text-2xl text-aluminum-100">
+              Watch the box
+            </h2>
+            <p className="mt-1 text-xs text-aluminum-400">
+              The production deploy has no rollback plan.
+            </p>
+          </div>
           {/* Phone-only parties still get the jack-in-the-box moment. */}
-          <GameCanvas room={room} className="h-48 rounded" />
+          <GameCanvas
+            room={room}
+            mode="controller"
+            className="controller-finale-stage game-stage h-64 w-full"
+          />
         </div>
       );
 
     case "splash":
       return (
-        <div className="flex flex-col gap-3">
+        <div className="controller-splash flex flex-col gap-3">
+          <AmbientStage
+            room={room}
+            kicker="Post-match review"
+            title="The room has reached a verdict"
+            detail="Aggregate headcounts decided the result. Individual choices remain sealed."
+            className="h-44"
+          />
           <SplashCard summary={snapshot.matchSummary} />
           <Leaderboard
             compact
@@ -364,9 +529,9 @@ function PhasePanel({
             <button
               type="button"
               onClick={() => room.hostStart()}
-              className="display-header min-h-12 w-full rounded bg-grievance px-4 py-3 text-lg tracking-widest text-white"
+              className="action-plate display-header min-h-12 w-full border border-grievance px-4 py-3 text-lg tracking-widest text-aluminum-100"
             >
-              Run it back
+              Redeploy the match
             </button>
           )}
         </div>
@@ -375,8 +540,9 @@ function PhasePanel({
     default:
       // Exhaustive today; a future phase just shows a calm memo.
       return (
-        <div className="memo-panel p-4">
-          <p className="text-sm">One moment…</p>
+        <div className="forge-panel p-4" role="status">
+          <p className="eyebrow">Room state changing</p>
+          <p className="mt-1 text-sm text-aluminum-300">One moment…</p>
         </div>
       );
   }
@@ -432,14 +598,15 @@ export default function PlayPage() {
     return () => window.removeEventListener("pointerdown", unlock);
   }, []);
 
-  // Server fx → sound stings. onFx registers into a stable listener set
-  // inside the hook, so re-subscribing when `room` re-memoizes is cheap.
+  // Server fx → sound stings. Subscribe once per stable room lifetime; the
+  // RoomApi object itself is rebuilt for each 25 Hz snapshot.
   useEffect(
     () =>
       room.onFx((fx) => {
         sound.play(FX_TO_STING[fx.type]);
       }),
-    [room],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [room.bufferRef],
   );
 
   // Finale choreography: the moment we ENTER the finale, wind the crank,
@@ -459,9 +626,6 @@ export default function PlayPage() {
 
   /* ── Derived display data ──────────────────────────────────────────── */
 
-  const isEventPhase =
-    phase === "event_countdown" || phase === "event_active" || phase === "event_outcome";
-
   // Ticker: grievances while they're being revealed, deadpan memos otherwise.
   const revealTexts =
     phase === "grievance_reveal" && snapshot
@@ -472,10 +636,14 @@ export default function PlayPage() {
   /* ── Render ────────────────────────────────────────────────────────── */
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-3 p-3">
+    <main className="controller-shell safe-bottom mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-3 p-3">
       {/* a. Status row: phase banner + connection dot + mute (top-right). */}
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
+      <header className="controller-header flex items-center gap-2">
+        <div className="brand-sigil h-10 w-10" aria-hidden="true" />
+        <div className="controller-identity min-w-0 flex-1">
+          <p className="eyebrow truncate">
+            Controller · {room.you?.name || join?.name || "Player"}
+          </p>
           <PhaseBanner snapshot={snapshot} />
         </div>
         <ConnectionDot status={room.status} />
@@ -484,28 +652,64 @@ export default function PlayPage() {
           onClick={toggleMute}
           aria-pressed={muted}
           aria-label={muted ? "Unmute sounds" : "Mute sounds"}
-          className="aluminum-panel flex min-h-12 min-w-12 items-center justify-center text-xl"
+          className="controller-audio-toggle aluminum-panel flex min-h-11 min-w-11 items-center justify-center text-aluminum-200"
         >
-          {/* Speaker glyphs, not text — hence the aria-label above. */}
-          <span aria-hidden="true">{muted ? "🔇" : "🔊"}</span>
+          <svg
+            viewBox="0 0 24 24"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M5 9.5h3l4-3.5v12l-4-3.5H5z" />
+            {muted ? (
+              <path d="m16 9 5 5m0-5-5 5" />
+            ) : (
+              <>
+                <path d="M16 9.5a4 4 0 0 1 0 5" />
+                <path d="M18.5 7a7 7 0 0 1 0 10" />
+              </>
+            )}
+          </svg>
         </button>
-      </div>
+      </header>
 
       {/* b. Phase-dependent main panel. myName prefers the SERVER-sanitized
           name (profanity mask / trim can rewrite what was typed) so the
           roster lookup always matches. */}
-      <div className="flex-1">
+      <div className="controller-phase-main min-h-0 flex-1">
         {snapshot && join ? (
           <PhasePanel room={room} snapshot={snapshot} myName={room.you?.name || join.name} />
         ) : (
-          <div className="memo-panel p-4">
-            <p className="text-sm">Connecting to the room…</p>
+          <div className="controller-connecting flex flex-col gap-3">
+            <AmbientStage
+              room={room}
+              kicker="Secure room handshake"
+              title="Joining the all-hands"
+              detail="Negotiating the live socket and loading the arena. Your controller will recover automatically if the connection drops."
+              className="h-52"
+            />
+            <div className="forge-panel p-4" role="status" aria-live="polite">
+              <div className="flex items-center gap-3">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-grease" aria-hidden="true" />
+                <div>
+                  <p className="eyebrow">Connection pending</p>
+                  <p className="mt-1 text-sm text-aluminum-300">
+                    Registering this controller with the live room…
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* c. Bottom rail: compact leaderboard during events, ticker always. */}
-      {snapshot && isEventPhase && (
+      {/* c. Standings return between rounds so the live character and mash
+          control remain above the fold on small phones. */}
+      {snapshot && phase === "event_outcome" && (
         <Leaderboard
           compact
           players={snapshot.players}
@@ -513,7 +717,9 @@ export default function PlayPage() {
           headOfHousehold={snapshot.matchSummary?.headOfHousehold ?? null}
         />
       )}
-      <Ticker messages={tickerMessages} />
+      <div className="controller-footer-ticker">
+        <Ticker messages={tickerMessages} />
+      </div>
     </main>
   );
 }

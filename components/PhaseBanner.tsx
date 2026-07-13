@@ -44,6 +44,28 @@ function phaseTitle(snap: Snapshot): string {
   }
 }
 
+/** Short world-state copy that makes every utilitarian phase feel deliberate. */
+function phaseKicker(snap: Snapshot): string {
+  switch (snap.phase) {
+    case "lobby":
+      return "War room assembling";
+    case "grievance_write":
+      return "Anonymous incident intake";
+    case "grievance_reveal":
+      return "Postmortem unsealed";
+    case "event_countdown":
+      return "Choose allegiance";
+    case "event_active":
+      return "Production under load";
+    case "event_outcome":
+      return "Round telemetry finalized";
+    case "finale":
+      return "Final release candidate";
+    case "splash":
+      return "Post-deploy report";
+  }
+}
+
 export default function PhaseBanner({ snapshot }: PhaseBannerProps) {
   // Remember when THIS snapshot object arrived (by reference — a new
   // snapshot is a new object). Done during render on purpose: we need the
@@ -91,25 +113,28 @@ export default function PhaseBanner({ snapshot }: PhaseBannerProps) {
   }
 
   return (
-    <div className="aluminum-panel flex items-center justify-between gap-4 px-4 py-2">
+    <div className="forge-panel flex min-h-12 items-center justify-between gap-3 px-3 py-2 sm:px-4">
       <div className="min-w-0">
-        <h2 className="display-header truncate text-lg text-aluminum-100 sm:text-xl">
+        <p className="eyebrow truncate text-[9px] sm:text-[10px]">
+          {snapshot ? phaseKicker(snapshot) : "Negotiating realtime uplink"}
+        </p>
+        <h2 className="display-header truncate text-sm text-aluminum-100 sm:text-lg">
           {snapshot ? phaseTitle(snapshot) : "CONNECTING…"}
           {/* Double-points chip: the finale event is worth 2× approval. */}
           {isEventPhase && meta?.weight === 2 && (
-            <span className="display-header ml-2 inline-block rounded bg-grease px-1.5 py-0.5 align-middle text-xs text-aluminum-950">
-              Double Points
+            <span className="ml-2 inline-block rounded-sm border border-grease/70 bg-grease/10 px-1.5 py-0.5 align-middle font-mono text-[9px] text-grease">
+              2× score
             </span>
           )}
         </h2>
         {countsLine && (
-          <p className="font-mono text-xs text-aluminum-400">{countsLine}</p>
+          <p className="truncate font-mono text-[10px] text-aluminum-400">{countsLine}</p>
         )}
       </div>
 
       {/* Seconds remaining — big, mono, tabular so digits don't wiggle. */}
       <div
-        className="shrink-0 font-mono text-3xl tabular-nums text-aluminum-100"
+        className="ember-pulse min-w-12 shrink-0 rounded-md border border-grease/35 bg-aluminum-950/80 px-2 py-1 text-center font-mono text-xl tabular-nums text-grease sm:text-2xl"
         aria-label="Seconds remaining"
       >
         {seconds ?? "—"}

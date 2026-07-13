@@ -7,7 +7,7 @@
  * pose during "splash" (GameCanvas keeps the same scene mounted for both).
  *
  * The sequence:
- *   0 – 2.5 s   a memo-colored box with aluminum trim; the side crank winds
+ *   0 – 2.5 s   a forged aluminum runtime reliquary; the side crank winds
  *               faster and faster while the box wobbles harder and harder
  *   2.5 s       the LID BURSTS off (up and to the left, spinning), Justin's
  *               head rockets up on a low-damping spring, confetti ×2
@@ -37,6 +37,12 @@ import type { SpringState } from "../toolkit";
 
 const ALUMINUM_300 = 0xb8bfc6; // --color-aluminum-300 from globals.css
 const GOLD = 0xd9a514;
+const SIGNAL_CYAN = 0x49c7dc;
+const SIGNAL_BLUE = 0x4d86d9;
+const SIGNAL_GREEN = 0x43c77a;
+const CITADEL_BLACK = 0x070b11;
+const FORGED_DARK = 0x121a23;
+const FORGED_MID = 0x25313c;
 
 const DISPLAY_FONT = ["Arial Narrow", "Helvetica Neue", "Roboto Condensed", "sans-serif"];
 const MONO_FONT = ["ui-monospace", "SF Mono", "Cascadia Mono", "Roboto Mono", "Menlo", "monospace"];
@@ -112,12 +118,23 @@ export const jackInTheBoxScene: SceneFactory = () => {
   let world: Container | null = null;
   let overlay: Container | null = null;
 
+  // Aluminum Citadel environment. Everything here is decorative and local;
+  // the finale never reads roster, side, tap, or event-view data.
+  let environmentG: Graphics | null = null;
+  let auraG: Graphics | null = null;
+  let runeWheel: Container | null = null;
+  let runeG: Graphics | null = null;
+  let foregroundG: Graphics | null = null;
+  let statusPips: Graphics[] = [];
+  let finaleStatus: Text | null = null;
+
   // The box: an outer container carries the position; the INNER container
   // is what the Shaker rattles (Shaker writes .position directly, so its
   // target must rest at (0,0)).
   let boxC: Container | null = null;
   let boxInner: Container | null = null;
   let faceG: Graphics | null = null;
+  let corePulseG: Graphics | null = null;
   let boxLabel: Text | null = null;
   let crank: Container | null = null;
   let lidC: Container | null = null;
@@ -152,7 +169,26 @@ export const jackInTheBoxScene: SceneFactory = () => {
   let lidVel: { vx: number; vy: number; spin: number } | null = null;
 
   function layout(w: number, h: number): void {
-    if (!boxC || !faceG || !lidC || !lidG || !crank || !boxLabel || !head || !happy || !happySub) return;
+    if (
+      !boxC ||
+      !faceG ||
+      !corePulseG ||
+      !lidC ||
+      !lidG ||
+      !crank ||
+      !boxLabel ||
+      !head ||
+      !happy ||
+      !happySub ||
+      !environmentG ||
+      !auraG ||
+      !runeWheel ||
+      !runeG ||
+      !foregroundG ||
+      !finaleStatus
+    ) {
+      return;
+    }
 
     cx = w / 2;
     boxW = clamp(Math.min(w, h) * 0.3, 120, 210);
@@ -163,29 +199,187 @@ export const jackInTheBoxScene: SceneFactory = () => {
     // The head settles well above the box but never off the top edge.
     restY = Math.max(headWorldSize * 0.75, boxTopY - h * 0.32);
 
+    // Citadel chamber: carved side pylons, abstract deployment traces and a
+    // perspective floor. All vectors are rebuilt only on resize.
+    const horizonY = h * 0.58;
+    const floorY = h * 0.79;
+    environmentG
+      .clear()
+      .rect(0, 0, w, h)
+      .fill({ color: CITADEL_BLACK, alpha: 0.24 })
+      .rect(0, floorY, w, h - floorY)
+      .fill({ color: CITADEL_BLACK, alpha: 0.56 })
+      .moveTo(0, floorY)
+      .lineTo(w, floorY)
+      .stroke({ width: 2, color: COLORS.aluminumDark, alpha: 0.48 });
+
+    for (let i = 0; i < 3; i++) {
+      const inset = i * w * 0.055;
+      const top = h * (0.1 + i * 0.055);
+      const innerX = w * (0.18 + i * 0.045);
+      environmentG
+        .poly([inset, 0, innerX, 0, innerX - w * 0.035, h, inset, h])
+        .fill({ color: FORGED_DARK, alpha: 0.18 + i * 0.05 })
+        .poly([w - inset, 0, w - innerX, 0, w - innerX + w * 0.035, h, w - inset, h])
+        .fill({ color: FORGED_DARK, alpha: 0.18 + i * 0.05 })
+        .moveTo(innerX, top)
+        .lineTo(innerX - w * 0.025, h)
+        .moveTo(w - innerX, top)
+        .lineTo(w - innerX + w * 0.025, h)
+        .stroke({ width: 1, color: COLORS.aluminum, alpha: 0.12 + i * 0.04 });
+    }
+
+    // Floor grid converges behind the reliquary and gives the pop real depth.
+    for (let i = 0; i <= 5; i++) {
+      const t = i / 5;
+      const y = floorY + (h - floorY) * t * t;
+      environmentG.moveTo(w * 0.04, y).lineTo(w * 0.96, y);
+    }
+    for (let i = -6; i <= 6; i++) {
+      environmentG
+        .moveTo(cx + i * w * 0.012, horizonY)
+        .lineTo(cx + i * w * 0.09, h);
+    }
+    environmentG.stroke({ width: 1, color: SIGNAL_BLUE, alpha: 0.12 });
+
+    // Side-channel deployment traces terminate at the central seal. They are
+    // fixed runes, not visualizations of real services or people.
+    const traceY = [h * 0.3, h * 0.42, h * 0.55];
+    for (let i = 0; i < traceY.length; i++) {
+      const y = traceY[i];
+      const accent = i === 0 ? SIGNAL_CYAN : i === 1 ? SIGNAL_GREEN : GOLD;
+      const stop = cx - boxW * (0.78 + i * 0.08);
+      environmentG
+        .moveTo(w * 0.035, y)
+        .lineTo(stop - 24, y)
+        .lineTo(stop, y + (i - 1) * 18)
+        .moveTo(w * 0.965, y)
+        .lineTo(w - stop + 24, y)
+        .lineTo(w - stop, y + (i - 1) * 18)
+        .stroke({ width: 1.5, color: accent, alpha: 0.25 })
+        .circle(w * 0.035, y, 3)
+        .fill({ color: accent, alpha: 0.72 })
+        .circle(w * 0.965, y, 3)
+        .fill({ color: accent, alpha: 0.72 });
+    }
+
+    // Layered light behind the box and eventual portrait—fake bloom with
+    // translucent geometry, avoiding filters on controller GPUs.
+    auraG
+      .clear()
+      .ellipse(cx, boxTopY + boxH * 0.28, boxW * 1.15, boxH * 1.05)
+      .fill({ color: SIGNAL_BLUE, alpha: 0.035 })
+      .ellipse(cx, boxTopY + boxH * 0.26, boxW * 0.82, boxH * 0.76)
+      .fill({ color: SIGNAL_CYAN, alpha: 0.045 })
+      .poly([
+        cx - boxW * 0.16, 0,
+        cx + boxW * 0.16, 0,
+        cx + boxW * 0.54, boxBaseY,
+        cx - boxW * 0.54, boxBaseY,
+      ])
+      .fill({ color: GOLD, alpha: 0.018 });
+
+    // Broken orbital seal: the reliquary is the final node in the ceremonial
+    // runtime. Pips are separate retained objects so update() can pulse them.
+    const runeR = boxW * 0.77;
+    runeWheel.position.set(cx, boxTopY + boxH * 0.34);
+    runeG
+      .clear()
+      .arc(0, 0, runeR, -Math.PI * 0.12, Math.PI * 0.54)
+      .stroke({ width: 1.5, color: SIGNAL_CYAN, alpha: 0.3 })
+      .arc(0, 0, runeR, Math.PI * 0.76, Math.PI * 1.48)
+      .stroke({ width: 1.5, color: SIGNAL_CYAN, alpha: 0.2 })
+      .arc(0, 0, runeR * 0.77, Math.PI * 0.15, Math.PI * 1.12)
+      .stroke({ width: 1, color: SIGNAL_BLUE, alpha: 0.28 })
+      .arc(0, 0, runeR * 0.55, -Math.PI * 0.48, Math.PI * 0.28)
+      .stroke({ width: 1, color: GOLD, alpha: 0.2 });
+    statusPips.forEach((pip, i) => {
+      const a = (i / statusPips.length) * Math.PI * 2;
+      const r = i % 2 === 0 ? runeR : runeR * 0.77;
+      pip.position.set(Math.cos(a) * r, Math.sin(a) * r);
+      pip.rotation = a;
+    });
+
+    // Forged foreground buttresses frame the action without covering the box.
+    foregroundG
+      .clear()
+      .poly([0, h, 0, h * 0.82, w * 0.17, h * 0.77, w * 0.29, h])
+      .fill({ color: CITADEL_BLACK, alpha: 0.74 })
+      .poly([w, h, w, h * 0.82, w * 0.83, h * 0.77, w * 0.71, h])
+      .fill({ color: CITADEL_BLACK, alpha: 0.74 })
+      .moveTo(0, h * 0.82)
+      .lineTo(w * 0.17, h * 0.77)
+      .lineTo(w * 0.29, h)
+      .moveTo(w, h * 0.82)
+      .lineTo(w * 0.83, h * 0.77)
+      .lineTo(w * 0.71, h)
+      .stroke({ width: 3, color: COLORS.aluminumDark, alpha: 0.58 });
+
     boxC.position.set(cx, boxBaseY);
 
-    // Box face: memo cardboard with aluminum trim and corner rivets —
-    // office supplies pretending to be a toy. Local origin: bottom-center.
+    // Ceremonial forged reliquary: dimensional side extrusion, inset steel
+    // face, reinforced corners, data slots and a central morale-core rune.
     faceG
       .clear()
-      .roundRect(-boxW / 2, -boxH, boxW, boxH, 10)
-      .fill({ color: COLORS.memo })
-      .roundRect(-boxW / 2, -boxH, boxW, boxH, 10)
-      .stroke({ width: 4, color: COLORS.aluminumDark })
-      .rect(-boxW / 2 + 6, -boxH / 2 - 2, boxW - 12, 4)
-      .fill({ color: COLORS.aluminum, alpha: 0.7 })
+      .roundRect(-boxW / 2 + 8, -boxH + 10, boxW, boxH, 12)
+      .fill({ color: 0x000000, alpha: 0.5 })
+      .poly([
+        boxW / 2 - 2, -boxH + 4,
+        boxW / 2 + 15, -boxH + 14,
+        boxW / 2 + 15, 5,
+        boxW / 2 - 2, 0,
+      ])
+      .fill({ color: CITADEL_BLACK, alpha: 0.96 })
+      .roundRect(-boxW / 2, -boxH, boxW, boxH, 11)
+      .fill({ color: FORGED_MID })
+      .roundRect(-boxW / 2 + 5, -boxH + 5, boxW - 10, boxH - 10, 8)
+      .fill({ color: FORGED_DARK })
+      .roundRect(-boxW / 2, -boxH, boxW, boxH, 11)
+      .stroke({ width: 4, color: COLORS.aluminum })
+      .roundRect(-boxW / 2 + 7, -boxH + 7, boxW - 14, boxH - 14, 7)
+      .stroke({ width: 1.5, color: COLORS.aluminumLight, alpha: 0.4 })
+      .rect(-boxW / 2 + 8, -boxH + 9, boxW - 16, boxH * 0.16)
+      .fill({ color: CITADEL_BLACK, alpha: 0.74 })
+      .rect(-boxW / 2 + 10, -boxH + 11, boxW - 20, 2)
+      .fill({ color: SIGNAL_CYAN, alpha: 0.36 })
+      .rect(-boxW / 2 + 14, -boxH * 0.27, boxW * 0.28, 3)
+      .fill({ color: SIGNAL_BLUE, alpha: 0.42 })
+      .rect(-boxW / 2 + 14, -boxH * 0.2, boxW * 0.18, 2)
+      .fill({ color: SIGNAL_CYAN, alpha: 0.34 })
+      .circle(boxW / 2 - 29, -boxH * 0.22, 3)
+      .fill({ color: SIGNAL_GREEN, alpha: 0.9 })
+      .circle(boxW / 2 - 19, -boxH * 0.22, 3)
+      .fill({ color: GOLD, alpha: 0.82 })
       .circle(-boxW / 2 + 12, -boxH + 12, 3)
-      .fill({ color: COLORS.aluminum })
+      .fill({ color: COLORS.aluminumLight })
       .circle(boxW / 2 - 12, -boxH + 12, 3)
-      .fill({ color: COLORS.aluminum })
+      .fill({ color: COLORS.aluminumLight })
       .circle(-boxW / 2 + 12, -12, 3)
       .fill({ color: COLORS.aluminum })
       .circle(boxW / 2 - 12, -12, 3)
       .fill({ color: COLORS.aluminum });
 
-    boxLabel.style.fontSize = clamp(boxW * 0.075, 9, 13);
-    boxLabel.position.set(0, -boxH * 0.28);
+    corePulseG
+      .clear()
+      .circle(0, 0, boxW * 0.14)
+      .fill({ color: SIGNAL_CYAN, alpha: 0.035 })
+      .circle(0, 0, boxW * 0.1)
+      .stroke({ width: 1.5, color: SIGNAL_CYAN, alpha: 0.52 })
+      .poly([
+        0, -boxW * 0.075,
+        boxW * 0.065, -boxW * 0.037,
+        boxW * 0.065, boxW * 0.037,
+        0, boxW * 0.075,
+        -boxW * 0.065, boxW * 0.037,
+        -boxW * 0.065, -boxW * 0.037,
+      ])
+      .stroke({ width: 2, color: GOLD, alpha: 0.68 })
+      .circle(0, 0, boxW * 0.018)
+      .fill({ color: COLORS.memo, alpha: 0.9 });
+    corePulseG.position.set(0, -boxH * 0.61);
+
+    boxLabel.style.fontSize = clamp(boxW * 0.068, 8, 12);
+    boxLabel.position.set(0, -boxH * 0.3);
 
     // The lid sits on top until it doesn't. Only redraw while it's still
     // attached — mid-flight resizes can keep the old shape, nobody minds.
@@ -193,15 +387,23 @@ export const jackInTheBoxScene: SceneFactory = () => {
       lidC.position.set(0, -boxH);
       lidG
         .clear()
-        .roundRect(-boxW / 2 - 5, -14, boxW + 10, 16, 5)
-        .fill({ color: COLORS.memo })
-        .roundRect(-boxW / 2 - 5, -14, boxW + 10, 16, 5)
-        .stroke({ width: 4, color: COLORS.aluminumDark })
-        .circle(0, -14, 4)
-        .fill({ color: COLORS.aluminum });
+        .roundRect(-boxW / 2 - 2, -10, boxW + 16, 17, 5)
+        .fill({ color: 0x000000, alpha: 0.42 })
+        .roundRect(-boxW / 2 - 7, -17, boxW + 14, 17, 5)
+        .fill({ color: FORGED_MID })
+        .roundRect(-boxW / 2 - 4, -14, boxW + 8, 11, 4)
+        .fill({ color: FORGED_DARK })
+        .roundRect(-boxW / 2 - 7, -17, boxW + 14, 17, 5)
+        .stroke({ width: 3, color: COLORS.aluminum })
+        .rect(-boxW * 0.22, -19, boxW * 0.44, 5)
+        .fill({ color: CITADEL_BLACK })
+        .rect(-boxW * 0.16, -18, boxW * 0.32, 2)
+        .fill({ color: SIGNAL_CYAN, alpha: 0.5 })
+        .circle(0, -17, 4)
+        .fill({ color: GOLD });
     }
 
-    crank.position.set(boxW / 2 + 6, -boxH * 0.45);
+    crank.position.set(boxW / 2 + 11, -boxH * 0.44);
 
     head.scale.set(headWorldSize / 120); // head was built at 120px
 
@@ -210,6 +412,8 @@ export const jackInTheBoxScene: SceneFactory = () => {
     happy.position.set(cx, h * 0.13);
     happySub.style.fontSize = Math.min(18, w * 0.032);
     happySub.position.set(cx, h * 0.13 + happySize * 0.78);
+    finaleStatus.style.fontSize = Math.min(12, w * 0.017);
+    finaleStatus.position.set(cx, Math.max(18, h * 0.065));
 
     miracle?.layout(w, h);
   }
@@ -235,7 +439,16 @@ export const jackInTheBoxScene: SceneFactory = () => {
       const side = k % 2 === 0 ? 1 : -1;
       springG.lineTo(x1 + dx * t + px * amp * side, y1 + dy * t + py * amp * side);
     }
-    springG.lineTo(x2, y2).stroke({ width: 4, color: COLORS.aluminum });
+    springG.lineTo(x2, y2).stroke({ width: 9, color: SIGNAL_CYAN, alpha: 0.08 });
+
+    // Crisp forged-steel pass over the faint runtime glow.
+    springG.moveTo(x1, y1);
+    for (let k = 1; k < SEGS; k++) {
+      const t = k / SEGS;
+      const side = k % 2 === 0 ? 1 : -1;
+      springG.lineTo(x1 + dx * t + px * amp * side, y1 + dy * t + py * amp * side);
+    }
+    springG.lineTo(x2, y2).stroke({ width: 4, color: COLORS.aluminumLight });
   }
 
   /**
@@ -245,6 +458,7 @@ export const jackInTheBoxScene: SceneFactory = () => {
   function doPop(fanfare: boolean): void {
     if (!services || !head || !springG || !lidC) return;
     const reduced = services.reducedMotion;
+    const density = clamp(services.visualDensity ?? 1, 0.45, 1);
     popped = true;
     // Backdating popAt makes every "time since pop" curve (bobbing, text
     // fades) start already settled on the quiet path.
@@ -262,7 +476,7 @@ export const jackInTheBoxScene: SceneFactory = () => {
       confetti?.burst({
         x: cx,
         y: boxTopY,
-        count: reduced ? 24 : 48,
+        count: Math.round((reduced ? 24 : 48) * density),
         color: CONFETTI_COLORS,
         angle: -Math.PI / 2,
         spread: Math.PI * 0.9,
@@ -288,52 +502,102 @@ export const jackInTheBoxScene: SceneFactory = () => {
       overlay = new Container();
       stage.addChild(world, overlay);
 
+      environmentG = new Graphics();
+      auraG = new Graphics();
+      runeWheel = new Container();
+      runeG = new Graphics();
+      runeWheel.addChild(runeG);
+      statusPips = [];
+      const density = clamp(svc.visualDensity ?? 1, 0.45, 1);
+      const pipCount = Math.max(4, Math.round(8 * density));
+      for (let i = 0; i < pipCount; i++) {
+        const accent = i % 3 === 0 ? GOLD : i % 2 === 0 ? SIGNAL_CYAN : SIGNAL_BLUE;
+        const pip = new Graphics()
+          .poly([0, -4, 4, 0, 0, 4, -4, 0])
+          .fill({ color: accent, alpha: 0.74 })
+          .circle(0, 0, 1.2)
+          .fill({ color: COLORS.memo, alpha: 0.9 });
+        runeWheel.addChild(pip);
+        statusPips.push(pip);
+      }
+      foregroundG = new Graphics();
+      world.addChild(environmentG, auraG, runeWheel);
+
       boxC = new Container();
       boxInner = new Container();
       boxC.addChild(boxInner);
       shaker = new Shaker(boxInner); // rattle just the box, not the world
 
       faceG = new Graphics();
+      corePulseG = new Graphics();
       boxLabel = new Text({
-        text: "CONTENTS: MORALE",
-        style: { fontFamily: MONO_FONT, fontSize: 12, fill: COLORS.aluminumDark, letterSpacing: 1 },
+        text: "RELIQUARY // MORALE CORE",
+        style: { fontFamily: MONO_FONT, fontSize: 12, fill: ALUMINUM_300, letterSpacing: 1.2 },
       });
       boxLabel.anchor.set(0.5);
 
       // Crank on the side: axle, arm, knob. update() spins the container.
       crank = new Container();
       crank.addChild(
-        new Graphics().moveTo(0, 0).lineTo(18, 0).stroke({ width: 5, color: COLORS.aluminum }),
-        new Graphics().circle(18, 0, 6).fill({ color: COLORS.aluminumLight }),
-        new Graphics().circle(0, 0, 4).fill({ color: COLORS.aluminumDark }),
+        new Graphics()
+          .circle(0, 0, 9)
+          .fill({ color: CITADEL_BLACK })
+          .circle(0, 0, 7)
+          .stroke({ width: 2, color: COLORS.aluminum }),
+        new Graphics()
+          .moveTo(0, 0)
+          .lineTo(22, 0)
+          .stroke({ width: 7, color: CITADEL_BLACK })
+          .moveTo(0, 0)
+          .lineTo(22, 0)
+          .stroke({ width: 4, color: COLORS.aluminumLight }),
+        new Graphics()
+          .circle(22, 0, 8)
+          .fill({ color: FORGED_MID })
+          .circle(22, 0, 8)
+          .stroke({ width: 2, color: GOLD })
+          .circle(22, 0, 2)
+          .fill({ color: SIGNAL_CYAN }),
       );
 
       lidC = new Container();
       lidG = new Graphics();
       lidC.addChild(lidG);
 
-      boxInner.addChild(faceG, boxLabel, crank, lidC);
+      boxInner.addChild(faceG, corePulseG, boxLabel, crank, lidC);
 
       springG = new Graphics();
       springG.visible = false; // hidden until the pop
       head = makeJustinHead(120, svc.photoUrl);
       head.visible = false;
-      // Order matters: box behind coil, coil behind head, lid rides the box.
-      world.addChild(boxC, springG, head);
+      // Order matters: environment → box → coil → head → forged foreground.
+      world.addChild(boxC, springG, head, foregroundG);
 
       happy = new Text({
         text: "HAPPY FESTIVUS",
-        style: { fontFamily: DISPLAY_FONT, fontSize: 64, fontWeight: "700", fill: COLORS.memo, letterSpacing: 8 },
+        style: {
+          fontFamily: DISPLAY_FONT,
+          fontSize: 64,
+          fontWeight: "700",
+          fill: COLORS.memo,
+          letterSpacing: 8,
+          stroke: { color: CITADEL_BLACK, width: 6 },
+        },
       });
       happy.anchor.set(0.5);
       happy.alpha = 0;
       happySub = new Text({
-        text: "FOR THE REST OF US",
-        style: { fontFamily: MONO_FONT, fontSize: 18, fill: ALUMINUM_300, letterSpacing: 3 },
+        text: "FOR THE REST OF US  //  RUNTIME RESTORED",
+        style: { fontFamily: MONO_FONT, fontSize: 18, fill: SIGNAL_CYAN, letterSpacing: 3 },
       });
       happySub.anchor.set(0.5);
       happySub.alpha = 0;
-      world.addChild(happy, happySub);
+      finaleStatus = new Text({
+        text: "●  FINAL DEPLOYMENT / STAGING",
+        style: { fontFamily: MONO_FONT, fontSize: 12, fill: SIGNAL_GREEN, letterSpacing: 2 },
+      });
+      finaleStatus.anchor.set(0.5);
+      world.addChild(happy, happySub, finaleStatus);
 
       confetti = new ParticleBurst(overlay); // confetti flies OVER everything
       miracle = new MiracleFlash(overlay, svc.reducedMotion);
@@ -344,7 +608,21 @@ export const jackInTheBoxScene: SceneFactory = () => {
     },
 
     update(args): void {
-      if (!world || !services || !head || !crank || !lidC || !happy || !happySub) return;
+      if (
+        !world ||
+        !services ||
+        !head ||
+        !crank ||
+        !lidC ||
+        !happy ||
+        !happySub ||
+        !corePulseG ||
+        !auraG ||
+        !runeWheel ||
+        !finaleStatus
+      ) {
+        return;
+      }
       if (args.width !== lastW || args.height !== lastH) {
         lastW = args.width;
         lastH = args.height;
@@ -361,12 +639,48 @@ export const jackInTheBoxScene: SceneFactory = () => {
 
       // Reduced motion: no wobble build-up, pop almost immediately.
       const POP_MS = reduced ? 450 : 2500;
+      const windT = clamp01(elapsed / POP_MS);
+
+      // Runtime ambience shares the finale clock but remains decorative.
+      // Controller density is handled at mount (fewer pips) and in burst
+      // counts; frame work stays to simple retained-object transforms.
+      if (reduced) {
+        runeWheel.rotation = 0.025;
+        corePulseG.rotation = 0;
+        corePulseG.alpha = 0.74;
+        corePulseG.scale.set(1);
+        auraG.alpha = 0.72;
+      } else {
+        runeWheel.rotation = (elapsed / 1000) * (popped ? 0.07 : 0.025 + windT * 0.08);
+        corePulseG.rotation = (elapsed / 1000) * (0.18 + windT * 0.42);
+        const coreBeat = 0.5 + 0.5 * Math.sin((elapsed / 1000) * (2.4 + windT * 5));
+        corePulseG.alpha = 0.58 + coreBeat * 0.4;
+        corePulseG.scale.set(0.92 + coreBeat * 0.12);
+        auraG.alpha = 0.56 + windT * 0.28 + coreBeat * 0.12;
+      }
+      statusPips.forEach((pip, i) => {
+        pip.alpha = reduced
+          ? 0.72
+          : 0.42 + 0.5 * (0.5 + 0.5 * Math.sin((elapsed / 1000) * 2.3 + i * 1.4));
+      });
+
+      if (!popped) {
+        finaleStatus.text =
+          windT < 0.4
+            ? "●  FINAL DEPLOYMENT / STAGING"
+            : windT < 0.78
+              ? "●  MORALE CORE / VERIFYING"
+              : "●  MORALE CORE / ARMED";
+        finaleStatus.alpha = reduced ? 0.76 : 0.62 + 0.28 * Math.sin(elapsed / 180);
+      } else {
+        finaleStatus.text = "●  CEREMONIAL RUNTIME / DEPLOYED";
+        finaleStatus.alpha = 0.72;
+      }
 
       if (!popped) {
         // ── Wind-up: crank accelerates, wobble grows quadratically ──────
-        const t = clamp01(elapsed / POP_MS);
-        crank.rotation += (dt / 1000) * (4 + 14 * t * t);
-        if (!reduced) shaker?.kick(1 + 9 * t * t); // kick() keeps the max
+        crank.rotation += (dt / 1000) * (4 + 14 * windT * windT);
+        if (!reduced) shaker?.kick(1 + 9 * windT * windT); // kick() keeps the max
         if (elapsed >= POP_MS) doPop(true);
       }
 
@@ -417,7 +731,9 @@ export const jackInTheBoxScene: SceneFactory = () => {
             confetti?.burst({
               x: cx,
               y: boxTopY,
-              count: reduced ? 16 : 32,
+              count: Math.round(
+                (reduced ? 16 : 32) * clamp(services.visualDensity ?? 1, 0.45, 1),
+              ),
               color: CONFETTI_COLORS,
               angle: -Math.PI / 2,
               spread: Math.PI * 1.1,
@@ -452,9 +768,17 @@ export const jackInTheBoxScene: SceneFactory = () => {
       // GameCanvas destroys the display tree after unmount.
       world = null;
       overlay = null;
+      environmentG = null;
+      auraG = null;
+      runeWheel = null;
+      runeG = null;
+      foregroundG = null;
+      statusPips = [];
+      finaleStatus = null;
       boxC = null;
       boxInner = null;
       faceG = null;
+      corePulseG = null;
       boxLabel = null;
       crank = null;
       lidC = null;

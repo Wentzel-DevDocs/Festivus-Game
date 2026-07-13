@@ -16,8 +16,35 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Justin's Feats of Strength",
-  description: "A Festivus party game: help or hinder the boss. Anonymously.",
+  metadataBase: new URL(
+    process.env.APP_BASE_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "http://localhost:3000",
+  ),
+  title: "Justin's Feats of Strength — A Festivus All-Hands Raid",
+  description:
+    "Enter the Aluminum Citadel for an anonymous, multiplayer Festivus raid built for the company all-hands.",
+  applicationName: "Justin's Feats of Strength",
+  openGraph: {
+    title: "Justin's Feats of Strength",
+    description:
+      "A Festivus all-hands raid. Help or hinder the boss—anonymously.",
+    type: "website",
+    images: [
+      {
+        url: "/og.png",
+        width: 1672,
+        height: 941,
+        alt: "The Aluminum Citadel and its ceremonial pole",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Justin's Feats of Strength",
+    description: "A Festivus all-hands raid for the company war room.",
+    images: ["/og.png"],
+  },
 };
 
 // Next.js wants viewport settings exported separately from `metadata`.
@@ -28,6 +55,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  themeColor: "#070a0f",
 };
 
 export default function RootLayout({
