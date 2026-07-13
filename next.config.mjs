@@ -23,14 +23,28 @@ const nextConfig = {
   // reference Vercel's file tracer cannot follow, so without this the
   // .wasm never ships with the function and /api/rivet dies with a 500.
   // Both paths are covered: pnpm's store layout and plain hoisted layout.
+  // rivetkit picks its runtime at startup: on Node it loads the NAPI
+  // native binding via import(["@rivetkit","rivetkit-napi"].join("/")) — a
+  // dynamic import the file tracer cannot see, so the binding never ships
+  // and rivetkit falls back to WASM, whose default loader fetch()es a
+  // file:// URL (unsupported on Node → "fetch failed"). Force-include the
+  // NAPI core + the linux-x64-gnu binary Vercel's lambdas need, plus the
+  // WASM package as belt-and-suspenders. Keys: App Router route ids end
+  // in /route; the glob covers future rivet sub-routes.
   outputFileTracingIncludes: {
-    // App Router route keys end in /route; the glob key is a belt-and-
-    // suspenders match for any future rivet sub-route.
     "/api/rivet/[[...slug]]/route": [
+      "node_modules/.pnpm/@rivetkit+rivetkit-napi@*/node_modules/@rivetkit/rivetkit-napi/**",
+      "node_modules/.pnpm/@rivetkit+rivetkit-napi-linux-x64-gnu@*/node_modules/@rivetkit/rivetkit-napi-linux-x64-gnu/**",
+      "node_modules/@rivetkit/rivetkit-napi/**",
+      "node_modules/@rivetkit/rivetkit-napi-linux-x64-gnu/**",
       "node_modules/.pnpm/@rivetkit+rivetkit-wasm@*/node_modules/@rivetkit/rivetkit-wasm/**",
       "node_modules/@rivetkit/rivetkit-wasm/**",
     ],
     "/api/rivet/**": [
+      "node_modules/.pnpm/@rivetkit+rivetkit-napi@*/node_modules/@rivetkit/rivetkit-napi/**",
+      "node_modules/.pnpm/@rivetkit+rivetkit-napi-linux-x64-gnu@*/node_modules/@rivetkit/rivetkit-napi-linux-x64-gnu/**",
+      "node_modules/@rivetkit/rivetkit-napi/**",
+      "node_modules/@rivetkit/rivetkit-napi-linux-x64-gnu/**",
       "node_modules/.pnpm/@rivetkit+rivetkit-wasm@*/node_modules/@rivetkit/rivetkit-wasm/**",
       "node_modules/@rivetkit/rivetkit-wasm/**",
     ],
