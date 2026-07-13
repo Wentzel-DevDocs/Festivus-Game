@@ -10,18 +10,19 @@
  * `PUT /runner-configs/default` upsert covering every Rivet datacenter,
  * pointing the engine at this deployment's /api/rivet route.
  *
- * Rivet Cloud ACL reality (observed in production): the connection-URL
- * tokens (both `sk_` and `pk_`) are data-plane only — they may not list
- * datacenters OR runner configs, not even in their own namespace
- * (`acl.insufficient_permissions`), and `GET /runner-configs/{name}`
- * 500s engine-side. This also breaks rivetkit's own `configurePool` path.
- * On such namespaces the DASHBOARD is the only way to create the runner
- * config (name it exactly "default", URL = this app's /api/rivet), and
- * nothing here can even verify it exists — which is why the route treats
- * provisioning as best-effort and never fails a request over it. The
- * code below still tries every angle (sk then pk for datacenters,
- * exists-check fallbacks) so permissive deployments — self-hosted engine,
- * broader tokens — keep true zero-config self-registration.
+ * Rivet Cloud token model (three token types): the connection-URL tokens
+ * (`sk_` runner + `pk_` publishable) are DATA-PLANE only — they may not
+ * list datacenters or runner configs, not even in their own namespace
+ * (`acl.insufficient_permissions`), which also breaks rivetkit's own
+ * `configurePool` path. Configuring the namespace (creating the runner
+ * config) requires the third token type — the ACCESS / Cloud API token
+ * (`cloud_api_…`). Set it as RIVET_ACCESS_TOKEN and this module uses it
+ * for the datacenter list + config write; the runner (`sk_`) token still
+ * goes into the config's x-rivet-token header (what the engine echoes back
+ * to /api/rivet). Without RIVET_ACCESS_TOKEN the code degrades to trying
+ * the connection tokens (works on self-hosted / permissive setups) and, if
+ * a config already exists (dashboard-created), reports success — the route
+ * treats provisioning as best-effort and never fails a request over it.
  *
  * Guard rails:
  *  - No-op without RIVET_ENDPOINT (local dev) or without a resolvable
@@ -109,6 +110,22 @@ function pkCreds(): Creds | null {
   );
 }
 
+/**
+ * Management (Access / Cloud API) credentials. RIVET_ACCESS_TOKEN is a bare
+ * token, not a connection URL, so it borrows namespace + endpoint from the
+ * connection URL (RIVET_ENDPOINT). This is the ONLY credential that may
+ * configure the namespace on Rivet Cloud.
+ */
+function mgmtCreds(): Creds | null {
+  const token = process.env.RIVET_ACCESS_TOKEN;
+  if (!token) return null;
+  const base = skCreds() ?? pkCreds();
+  const namespace = base?.namespace ?? process.env.RIVET_NAMESPACE ?? "";
+  const endpoint = base?.endpoint ?? "https://api.rivet.dev";
+  if (!namespace) return null;
+  return { endpoint, namespace, token };
+}
+
 function apiHeaders(creds: Creds): Record<string, string> {
   return {
     Authorization: `Bearer ${creds.token}`,
@@ -132,30 +149,40 @@ async function provision(): Promise<ProvisionResult> {
     };
   }
 
+  // Prefer the management token for reads/writes; connection tokens 403 on
+  // Rivet Cloud. `write` is whoever we'll authenticate the config write as.
+  const mgmt = mgmtCreds();
+  const write = mgmt ?? sk;
+  const via = mgmt ? "access token" : "connection token";
+
   const dcErrors: string[] = [];
   const datacenters =
+    (await listDatacenters(mgmt, "mgmt", dcErrors)) ??
     (await listDatacenters(sk, "sk", dcErrors)) ??
     (await listDatacenters(pkCreds(), "pk", dcErrors));
 
   if (!datacenters) {
     // Can't upsert without datacenter names — but if a usable config is
     // already registered (dashboard-created), the room works; don't fail.
-    if ((await configState(sk)) === "exists") {
+    if ((await configState(write)) === "exists") {
       return {
         outcome: "exists",
         detail: `'${RUNNER_NAME}' runner config already registered (couldn't verify its URL: ${dcErrors.join("; ")})`,
       };
     }
     throw new Error(
-      `no '${RUNNER_NAME}' runner config exists and datacenters can't be listed to create one (${dcErrors.join("; ")})`,
+      `no '${RUNNER_NAME}' runner config exists and datacenters can't be listed to create one` +
+        `${mgmt ? "" : " (set RIVET_ACCESS_TOKEN — connection tokens can't configure the namespace)"}: ${dcErrors.join("; ")}`,
     );
   }
 
   try {
-    await putConfig(sk, datacenters, runnerUrl);
+    // Write authenticated as `write`; the engine's callback token in the
+    // config body is always the runner (sk_) token, not the access token.
+    await putConfig(write, sk.token, datacenters, runnerUrl);
   } catch (err) {
     // Upsert denied but a config is already there → good enough to play.
-    if ((await configState(sk)) === "exists") {
+    if ((await configState(write)) === "exists") {
       return {
         outcome: "exists",
         detail: `'${RUNNER_NAME}' runner config already registered (upsert not permitted: ${(err as Error).message})`,
@@ -165,7 +192,7 @@ async function provision(): Promise<ProvisionResult> {
   }
   return {
     outcome: "created",
-    detail: `runner config '${RUNNER_NAME}' → ${runnerUrl} in [${datacenters.join(", ")}]`,
+    detail: `runner config '${RUNNER_NAME}' → ${runnerUrl} in [${datacenters.join(", ")}] via ${via}`,
   };
 }
 
@@ -200,10 +227,10 @@ async function listDatacenters(
 }
 
 /** Does a runner config named RUNNER_NAME already exist? */
-async function configState(sk: Creds): Promise<"exists" | "missing" | "unknown"> {
+async function configState(creds: Creds): Promise<"exists" | "missing" | "unknown"> {
   try {
-    const res = await fetch(apiUrl(sk, `/runner-configs/${RUNNER_NAME}`), {
-      headers: apiHeaders(sk),
+    const res = await fetch(apiUrl(creds, `/runner-configs/${RUNNER_NAME}`), {
+      headers: apiHeaders(creds),
       cache: "no-store",
     });
     if (res.ok) return "exists";
@@ -214,13 +241,18 @@ async function configState(sk: Creds): Promise<"exists" | "missing" | "unknown">
   }
 }
 
-async function putConfig(sk: Creds, datacenters: string[], runnerUrl: string): Promise<void> {
+async function putConfig(
+  auth: Creds,
+  runnerToken: string,
+  datacenters: string[],
+  runnerUrl: string,
+): Promise<void> {
   // Field-for-field what rivetkit's configureServerlessPool sends, with a
-  // Vercel-safe lifespan. x-rivet-token is the header the ENGINE presents
-  // when it calls back into /api/rivet.
+  // Vercel-safe lifespan. x-rivet-token is the runner token the ENGINE
+  // presents when it calls back into /api/rivet — NOT the write auth.
   const serverless = {
     url: runnerUrl,
-    headers: { "x-rivet-token": sk.token },
+    headers: { "x-rivet-token": runnerToken },
     request_lifespan: REQUEST_LIFESPAN_S,
     metadata_poll_interval: 1000,
     max_runners: 100_000,
@@ -236,9 +268,9 @@ async function putConfig(sk: Creds, datacenters: string[], runnerUrl: string): P
       ]),
     ),
   };
-  const res = await fetch(apiUrl(sk, `/runner-configs/${RUNNER_NAME}`), {
+  const res = await fetch(apiUrl(auth, `/runner-configs/${RUNNER_NAME}`), {
     method: "PUT",
-    headers: apiHeaders(sk),
+    headers: apiHeaders(auth),
     cache: "no-store",
     body: JSON.stringify(body),
   });
@@ -256,6 +288,7 @@ async function putConfig(sk: Creds, datacenters: string[], runnerUrl: string): P
 export async function provisionStatus(): Promise<Response> {
   const sk = skCreds();
   const pk = pkCreds();
+  const mgmt = mgmtCreds();
 
   const probe = async (creds: Creds | null, path: string): Promise<string> => {
     if (!creds) return "no credentials";
@@ -273,10 +306,11 @@ export async function provisionStatus(): Promise<Response> {
 
   /** List probe returns config NAMES only — bodies embed the engine token. */
   const configNames = async (): Promise<string> => {
-    if (!sk) return "no credentials";
+    const creds = mgmt ?? sk;
+    if (!creds) return "no credentials";
     try {
-      const res = await fetch(apiUrl(sk, "/runner-configs"), {
-        headers: apiHeaders(sk),
+      const res = await fetch(apiUrl(creds, "/runner-configs"), {
+        headers: apiHeaders(creds),
         cache: "no-store",
       });
       if (!res.ok) return `${res.status}: ${await errBody(res)}`;
@@ -311,12 +345,14 @@ export async function provisionStatus(): Promise<Response> {
     runnerUrl: resolveRunnerUrl(),
     hasSkCreds: Boolean(sk),
     hasPkCreds: Boolean(pk),
+    hasAccessToken: Boolean(mgmt),
     provision: provisionOutcome,
     probes: {
+      "mgmt GET /datacenters": await probe(mgmt, "/datacenters"),
       "sk GET /datacenters": await probe(sk, "/datacenters"),
       "pk GET /datacenters": await probe(pk, "/datacenters"),
-      [`sk GET /runner-configs/${RUNNER_NAME}`]: await probe(sk, `/runner-configs/${RUNNER_NAME}`),
-      "sk GET /runner-configs (names)": await configNames(),
+      [`mgmt GET /runner-configs/${RUNNER_NAME}`]: await probe(mgmt, `/runner-configs/${RUNNER_NAME}`),
+      "runner-configs (names)": await configNames(),
     },
   });
 }
