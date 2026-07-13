@@ -30,7 +30,27 @@ export const runtime = "nodejs";
 // 300 s is the Vercel Hobby (fluid compute) ceiling; raise to 800 on Pro.
 export const maxDuration = 300;
 
-const handler = (request: Request) => registry.handler(request);
+const handler = async (request: Request) => {
+  try {
+    return await registry.handler(request);
+  } catch (err) {
+    // Surface the real failure in the response body: platform runtime logs
+    // are awkward to reach mid-debug, and rivetkit's errors are designed to
+    // be shown (no secrets — we only report a BOOLEAN for the env var).
+    const e = err as Error & { code?: string; group?: string };
+    return Response.json(
+      {
+        ok: false,
+        error: e?.message ?? String(err),
+        code: e?.code ?? null,
+        group: e?.group ?? null,
+        node: process.version,
+        hasRivetEndpoint: Boolean(process.env.RIVET_ENDPOINT),
+      },
+      { status: 500 },
+    );
+  }
+};
 
 export {
   handler as GET,
