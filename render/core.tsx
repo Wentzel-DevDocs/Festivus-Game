@@ -122,6 +122,8 @@ export default function GameCanvas({
     let app: Application | null = null;
     let scene: Scene | null = null;
     let sceneKey = "";
+    let resizeObserver: ResizeObserver | null = null;
+    let resizeFrame = 0;
 
     const services: SceneServices = {
       photoUrl: GAME_CONFIG.JUSTIN_PHOTO_URL,
@@ -149,6 +151,19 @@ export default function GameCanvas({
       host.appendChild(a.canvas);
       a.canvas.style.width = "100%";
       a.canvas.style.height = "100%";
+
+      // `resizeTo` listens for window resizes, but our responsive shells can
+      // also change the stage's size without changing the window (for example
+      // when the host controls appear or a tablet rotates between layouts).
+      // Observe the actual host so Pixi's logical viewport and backing canvas
+      // always match the CSS box used by the scene.
+      resizeObserver = new ResizeObserver(() => {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => {
+          if (!destroyed) a.resize();
+        });
+      });
+      resizeObserver.observe(host);
 
       const root = new Container();
       a.stage.addChild(root);
@@ -207,6 +222,8 @@ export default function GameCanvas({
 
     return () => {
       destroyed = true;
+      resizeObserver?.disconnect();
+      cancelAnimationFrame(resizeFrame);
       scene?.unmount();
       if (app) {
         app.destroy(true, { children: true });

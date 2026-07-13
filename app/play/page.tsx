@@ -100,22 +100,31 @@ function ConnectionDot({ status }: { status: RoomStatus }) {
  * controller in the same world as the broadcast without crowding out the
  * phase's actual job (typing, reading, or reviewing results).
  */
+type AmbientStageSize = "compact" | "standard" | "report" | "connecting";
+
+const AMBIENT_STAGE_SIZE_CLASSES: Record<AmbientStageSize, string> = {
+  compact: "controller-ambient-stage--compact h-36",
+  standard: "controller-ambient-stage--standard h-40",
+  report: "controller-ambient-stage--report h-44",
+  connecting: "controller-ambient-stage--connecting h-52",
+};
+
 function AmbientStage({
   room,
   kicker,
   title,
   detail,
-  className = "",
+  size = "standard",
 }: {
   room: RoomApi;
   kicker: string;
   title: string;
   detail: string;
-  className?: string;
+  size?: AmbientStageSize;
 }) {
   return (
     <section
-      className={`controller-ambient-stage game-stage relative h-40 overflow-hidden ${className}`}
+      className={`controller-ambient-stage game-stage relative overflow-hidden ${AMBIENT_STAGE_SIZE_CLASSES[size]}`}
       aria-label={title}
     >
       <GameCanvas
@@ -362,7 +371,7 @@ function PhasePanel({
             kicker="Intake window open"
             title="The anonymous channel is live"
             detail="No attribution log. No identity field. Submit the feedback that somehow missed the retro."
-            className="h-36"
+            size="compact"
           />
           <GrievanceComposer room={room} grievanceCount={snapshot.grievanceCount} />
         </div>
@@ -376,7 +385,7 @@ function PhasePanel({
             kicker="Shuffled release"
             title="The receipts are live"
             detail="Authors were never recorded. Follow the reveal here or put eyes on the broadcast."
-            className="h-36"
+            size="compact"
           />
           <div className="hud-chip self-center" role="status">
             Shuffled order · zero attribution
@@ -411,16 +420,24 @@ function PhasePanel({
         : picked !== null
           ? `${labels[picked]} locked · secret`
           : "Pick a side to unlock mashing";
+      const eventPhaseKey = phase.replace("event_", "");
 
       return (
-        <div className="controller-event-grid flex flex-col gap-3">
-          <div className="flex min-w-0 flex-col gap-2">
+        <section
+          className={`controller-event-grid controller-event-grid--${eventPhaseKey} grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)] lg:items-center`}
+          aria-label={`${meta?.name ?? "Current event"} player station`}
+          data-event-phase={phase}
+        >
+          <section
+            className={`controller-event-visual controller-event-visual--${eventPhaseKey} flex min-w-0 flex-col gap-2`}
+            aria-label="Shared aggregate game arena"
+          >
             {/* Every controller now renders the same aggregate-only scene as
                 the broadcast. It never receives or branches on anyone's side. */}
             <GameCanvas
               room={room}
               mode="controller"
-              className="controller-event-stage game-stage player-stage w-full"
+              className={`controller-event-stage controller-event-stage--${eventPhaseKey} game-stage player-stage w-full`}
             />
             <div className="controller-progress-panel forge-panel px-3 py-2">
               <div className="mb-1.5 flex items-center justify-between gap-3">
@@ -431,9 +448,12 @@ function PhasePanel({
               </div>
               <JustinBar progress={snapshot.justinProgress} />
             </div>
-          </div>
+          </section>
 
-          <div className="controller-event-actions flex min-w-0 flex-col justify-center gap-3">
+          <section
+            className={`controller-event-actions controller-event-actions--${eventPhaseKey} flex min-w-0 flex-col justify-center gap-3`}
+            aria-label="Player input controls"
+          >
             {phase === "event_outcome" ? (
               <div
                 className="controller-outcome-card forge-panel border-grease/30 p-4 text-center"
@@ -482,8 +502,8 @@ function PhasePanel({
                 )}
               </>
             )}
-          </div>
-        </div>
+          </section>
+        </section>
       );
     }
 
@@ -516,7 +536,7 @@ function PhasePanel({
             kicker="Post-match review"
             title="The room has reached a verdict"
             detail="Aggregate headcounts decided the result. Individual choices remain sealed."
-            className="h-44"
+            size="report"
           />
           <SplashCard summary={snapshot.matchSummary} />
           <Leaderboard
@@ -632,13 +652,22 @@ export default function PlayPage() {
       ? snapshot.grievanceFeed.map((g) => g.text)
       : [];
   const tickerMessages = revealTexts.length > 0 ? revealTexts : IDLE_TICKER_LINES;
+  const isEventPhase = phase?.startsWith("event_") ?? false;
+  const shellModeClass = isEventPhase
+    ? "controller-shell--event max-w-6xl"
+    : "controller-shell--flow max-w-lg";
 
   /* ── Render ────────────────────────────────────────────────────────── */
 
   return (
-    <main className="controller-shell safe-bottom mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-3 p-3">
+    <main
+      className={`controller-shell safe-bottom mx-auto flex min-h-dvh w-full flex-col gap-3 p-3 ${shellModeClass}`}
+      data-phase={phase ?? "connecting"}
+    >
       {/* a. Status row: phase banner + connection dot + mute (top-right). */}
-      <header className="controller-header flex items-center gap-2">
+      <header
+        className={`controller-header flex items-center gap-2 ${isEventPhase ? "controller-header--event" : "controller-header--flow"}`}
+      >
         <div className="brand-sigil h-10 w-10" aria-hidden="true" />
         <div className="controller-identity min-w-0 flex-1">
           <p className="eyebrow truncate">
@@ -680,7 +709,9 @@ export default function PlayPage() {
       {/* b. Phase-dependent main panel. myName prefers the SERVER-sanitized
           name (profanity mask / trim can rewrite what was typed) so the
           roster lookup always matches. */}
-      <div className="controller-phase-main min-h-0 flex-1">
+      <div
+        className={`controller-phase-main min-h-0 flex-1 ${isEventPhase ? "controller-phase-main--event" : "controller-phase-main--flow"}`}
+      >
         {snapshot && join ? (
           <PhasePanel room={room} snapshot={snapshot} myName={room.you?.name || join.name} />
         ) : (
@@ -690,7 +721,7 @@ export default function PlayPage() {
               kicker="Secure room handshake"
               title="Joining the all-hands"
               detail="Negotiating the live socket and loading the arena. Your controller will recover automatically if the connection drops."
-              className="h-52"
+              size="connecting"
             />
             <div className="forge-panel p-4" role="status" aria-live="polite">
               <div className="flex items-center gap-3">
@@ -710,14 +741,18 @@ export default function PlayPage() {
       {/* c. Standings return between rounds so the live character and mash
           control remain above the fold on small phones. */}
       {snapshot && phase === "event_outcome" && (
-        <Leaderboard
-          compact
-          players={snapshot.players}
-          alltime={snapshot.leaderboard}
-          headOfHousehold={snapshot.matchSummary?.headOfHousehold ?? null}
-        />
+        <section className="controller-outcome-standings" aria-label="Round standings">
+          <Leaderboard
+            compact
+            players={snapshot.players}
+            alltime={snapshot.leaderboard}
+            headOfHousehold={snapshot.matchSummary?.headOfHousehold ?? null}
+          />
+        </section>
       )}
-      <div className="controller-footer-ticker">
+      <div
+        className={`controller-footer-ticker ${isEventPhase ? "controller-footer-ticker--event" : "controller-footer-ticker--flow"}`}
+      >
         <Ticker messages={tickerMessages} />
       </div>
     </main>

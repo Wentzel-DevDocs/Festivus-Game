@@ -236,12 +236,29 @@ button {
   position: relative;
   z-index: 1;
   display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .landing-arena {
   background:
     linear-gradient(90deg, rgba(7, 10, 15, 0.46), rgba(7, 10, 15, 0.92)),
     url("/assets/festivus-arena.jpg") center / cover no-repeat;
+}
+
+.landing-hero,
+.landing-entry {
+  min-width: 0;
+}
+
+.landing-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.landing-entry {
+  align-self: stretch;
 }
 
 .player-stage {
@@ -336,6 +353,38 @@ button {
     0 0 30px rgba(232, 169, 65, 0.08);
 }
 
+/* The broadcast is a display surface, not a centered web card. Element-level
+   canvas resizing in render/core.tsx keeps the renderer in lockstep with this
+   flexible frame as rails, host roles, and viewport orientations change. */
+.broadcast-stage-frame {
+  contain: layout paint;
+}
+
+.broadcast-stage {
+  min-width: 0;
+}
+
+.broadcast-rail {
+  scrollbar-color: var(--color-aluminum-600) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.broadcast-header-actions button {
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.broadcast-header-actions button:not(:disabled):hover {
+  border-color: rgba(232, 169, 65, 0.58);
+  color: var(--color-grease);
+}
+
+.broadcast-join-url {
+  font-size: clamp(1rem, 1.4vw, 1.5rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 .progress-rail {
   position: relative;
   height: 0.62rem;
@@ -357,6 +406,10 @@ button {
 .controller-shell {
   position: relative;
   isolation: isolate;
+}
+
+.controller-shell--event {
+  width: 100%;
 }
 
 .controller-shell::before {
@@ -447,6 +500,12 @@ button {
   border-color: rgba(232, 169, 65, 0.32);
 }
 
+.controller-event-grid,
+.controller-event-visual,
+.controller-event-actions {
+  min-height: 0;
+}
+
 .controller-progress-panel {
   border-radius: 10px;
 }
@@ -529,6 +588,28 @@ button {
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
+.safe-viewport {
+  --safe-page-pad: 1rem;
+  padding-top: max(var(--safe-page-pad), env(safe-area-inset-top));
+  padding-right: max(var(--safe-page-pad), env(safe-area-inset-right));
+  padding-bottom: max(var(--safe-page-pad), env(safe-area-inset-bottom));
+  padding-left: max(var(--safe-page-pad), env(safe-area-inset-left));
+}
+
+.controller-shell {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+}
+
+.broadcast-shell {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+}
+
 /* ── Motion ──────────────────────────────────────────────────────────── */
 
 @keyframes screen-shake {
@@ -558,9 +639,90 @@ button {
   75%, 100% { box-shadow: 0 0 0 8px rgba(215, 71, 71, 0); }
 }
 
+@media (min-width: 640px) {
+  .broadcast-shell {
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+}
+
+@media (min-width: 768px) {
+  .safe-viewport {
+    --safe-page-pad: 2rem;
+  }
+
+  .landing-hero,
+  .landing-entry {
+    min-height: min(760px, 78dvh);
+  }
+
+  .controller-shell--event {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .controller-phase-main--event {
+    display: flex;
+    min-height: 0;
+  }
+
+  .controller-phase-main--event > .controller-event-grid {
+    min-height: 0;
+    flex: 1;
+    align-items: stretch;
+  }
+
+  .controller-event-visual {
+    height: auto;
+    align-self: center;
+  }
+
+  .controller-event-stage {
+    height: auto;
+    min-height: 0;
+    flex: none;
+    aspect-ratio: 16 / 10;
+  }
+
+  .controller-event-actions .mash-core {
+    width: clamp(176px, 25vw, 224px);
+  }
+}
+
 @media (min-width: 1024px) {
   .boss-stage {
     height: min(66vh, 760px);
+  }
+
+  .broadcast-shell {
+    padding-top: max(1.25rem, env(safe-area-inset-top));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+  }
+}
+
+/* A 1024px tablet has enough room for a useful rail, but not a fixed 310px
+   rail. This keeps the arena close to a cinematic aspect instead of turning
+   it into a tall slot. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .broadcast-body {
+    grid-template-columns: minmax(0, 1fr) clamp(200px, 20vw, 230px);
+  }
+
+  .broadcast-header {
+    grid-template-columns: minmax(220px, auto) minmax(240px, 1fr) auto;
+  }
+
+  .broadcast-stamp {
+    display: none;
+  }
+
+  .broadcast-join-card {
+    padding: 0.75rem;
   }
 }
 
@@ -569,21 +731,357 @@ button {
 
   .controller-shell {
     gap: 0.5rem;
-    padding-top: 0.5rem;
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
   }
 
   .controller-event-actions {
     gap: 0.5rem;
   }
+
+  .controller-shell--event {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .controller-header--event .brand-sigil {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .controller-header--event .controller-identity > .forge-panel {
+    min-height: 2.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .controller-header--event .controller-identity > .forge-panel .eyebrow {
+    display: none;
+  }
+
+  .controller-phase-main--event {
+    display: flex;
+    min-height: 0;
+  }
+
+  .controller-phase-main--event > .controller-event-grid {
+    min-height: 0;
+    flex: 1;
+    gap: 0.5rem;
+  }
+
+  .controller-event-stage {
+    min-height: 156px;
+  }
+
+  .controller-event-actions .mash-core {
+    width: 168px;
+  }
 }
 
-@media (orientation: landscape) and (max-height: 520px) {
-  .controller-event-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr);
-    align-items: center;
+/* Taller portrait phones have room to make the shared character materially
+   larger without displacing the mash control or operations ticker. */
+@media (orientation: portrait) and (max-width: 767px) and (min-height: 760px) {
+  .controller-shell--event .player-stage {
+    height: clamp(260px, 36dvh, 310px);
   }
-  .player-stage { height: min(78dvh, 360px); }
+}
+
+/* Short landscape is a first-class projection/controller mode, not a rotated
+   portrait page. Both surfaces lock to the visual viewport and split into a
+   two-station layout with zero document scrolling. */
+@media (orientation: landscape) and (max-height: 520px) and (min-width: 640px) {
+  .safe-viewport {
+    --safe-page-pad: 0.5rem;
+  }
+
+  .landing-shell {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .landing-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+    gap: 0.5rem;
+  }
+
+  .landing-hero,
+  .landing-entry {
+    min-height: 0;
+    max-height: calc(100dvh - 1rem);
+    padding: 1rem;
+  }
+
+  .landing-brand {
+    margin-bottom: 0.5rem;
+  }
+
+  .landing-hero h1 {
+    margin-top: 0.35rem;
+    font-size: clamp(2.25rem, 6.4vw, 3.8rem);
+  }
+
+  .landing-copy {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+
+  .landing-chips {
+    margin-top: 0.75rem;
+  }
+
+  .landing-entry > div:first-child {
+    margin-bottom: 0.75rem;
+  }
+
+  .landing-entry input,
+  .landing-entry button {
+    min-height: 2.75rem;
+  }
+
+  .landing-entry .hud-rule {
+    margin-block: 0.875rem;
+  }
+
+  .landing-entry {
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .broadcast-shell {
+    height: 100dvh;
+    min-height: 0;
+    gap: 0.5rem;
+    overflow: hidden;
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+  }
+
+  .broadcast-header {
+    display: grid;
+    grid-template-columns: minmax(170px, 0.9fr) minmax(220px, 1fr) auto;
+    gap: 0.5rem;
+    padding: 0.375rem;
+  }
+
+  .broadcast-heading {
+    flex-wrap: nowrap;
+  }
+
+  .broadcast-brand-lockup {
+    gap: 0.5rem;
+  }
+
+  .broadcast-brand-lockup .brand-sigil {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .broadcast-heading h1 {
+    font-size: 0.82rem;
+  }
+
+  .broadcast-stamp {
+    display: none;
+  }
+
+  .broadcast-phase > .forge-panel {
+    min-height: 2.5rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .broadcast-phase .eyebrow {
+    display: none;
+  }
+
+  .broadcast-phase h2 {
+    font-size: 0.8rem;
+  }
+
+  .broadcast-phase .ember-pulse {
+    min-width: 2.4rem;
+    font-size: 1rem;
+  }
+
+  .broadcast-header-actions button {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+
+  .broadcast-body {
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 26vw);
+    gap: 0.5rem;
+    overflow: hidden;
+  }
+
+  .broadcast-primary {
+    grid-template-rows: minmax(0, 1fr) 3rem;
+    gap: 0.5rem;
+  }
+
+  .broadcast-stage {
+    min-height: 0;
+  }
+
+  .broadcast-stage-chrome .hud-chip:nth-child(2),
+  .broadcast-stage-chrome > div:last-child .hud-chip:last-child {
+    display: none;
+  }
+
+  .broadcast-operator-row {
+    height: 3rem;
+    min-height: 3rem;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow: hidden;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .broadcast-operator-row button {
+    min-height: 2.25rem;
+    flex: 0 0 auto;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .broadcast-operator-row p {
+    margin-top: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .broadcast-operator-status > div > p:last-child {
+    display: none;
+  }
+
+  .broadcast-rail {
+    gap: 0.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .broadcast-join-card {
+    padding: 0.625rem;
+  }
+
+  .broadcast-join-card p:not(.broadcast-join-url) {
+    margin-top: 0.35rem;
+    font-size: 0.68rem;
+    line-height: 1rem;
+  }
+
+  .broadcast-join-url {
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+    line-height: 1rem;
+  }
+
+  .broadcast-join-card .hud-rule {
+    margin-block: 0.4rem;
+  }
+
+  .broadcast-footer {
+    display: none;
+  }
+
+  .controller-shell--event {
+    height: 100dvh;
+    min-height: 0;
+    gap: 0.375rem;
+    overflow: hidden;
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+  }
+
+  .controller-header--event {
+    min-height: 2.75rem;
+  }
+
+  .controller-header--event .brand-sigil {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .controller-header--event .controller-identity > .forge-panel {
+    min-height: 2.5rem;
+    padding: 0.2rem 0.5rem;
+  }
+
+  .controller-header--event > .controller-identity > .eyebrow,
+  .controller-header--event .controller-identity > .forge-panel .eyebrow {
+    display: none;
+  }
+
+  .controller-header--event .controller-identity > .forge-panel h2 {
+    font-size: 0.82rem;
+  }
+
+  .controller-header--event .controller-audio-toggle {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+
+  .controller-phase-main--event {
+    display: flex;
+    min-height: 0;
+  }
+
+  .controller-event-grid {
+    min-height: 0;
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .controller-event-visual {
+    height: 100%;
+    gap: 0.375rem;
+  }
+
+  .controller-event-stage {
+    height: auto;
+    min-height: 0;
+    flex: 1;
+    aspect-ratio: auto;
+  }
+
+  .controller-progress-panel {
+    height: 1.5rem;
+    padding: 0.35rem 0.75rem;
+  }
+
+  .controller-progress-panel > div:first-child {
+    display: none;
+  }
+
+  .controller-event-actions {
+    height: 100%;
+    gap: 0.375rem;
+  }
+
+  .controller-event-actions .mash-core {
+    width: 168px;
+  }
+
+  .controller-event-actions .action-plate {
+    min-height: 3.5rem;
+    padding-block: 0.5rem;
+  }
+
+  .controller-footer-ticker--event aside {
+    height: 2rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

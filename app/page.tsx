@@ -54,11 +54,11 @@ export default function LandingPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-6xl items-center p-4 md:p-8">
-      <section className="grid w-full items-center gap-4 md:gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="relative overflow-hidden rounded-2xl border border-aluminum-600/50 bg-aluminum-950/70 p-5 shadow-2xl backdrop-blur-sm md:p-10">
+    <main className="landing-shell safe-viewport mx-auto flex min-h-dvh w-full max-w-[1920px] items-center p-4 md:p-8">
+      <section className="landing-grid grid w-full items-center gap-4 md:gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="landing-hero relative overflow-hidden rounded-2xl border border-aluminum-600/50 bg-aluminum-950/70 p-5 shadow-2xl backdrop-blur-sm md:p-10">
           <div className="landing-arena absolute inset-0 -z-10" />
-          <div className="brand-lockup mb-6 md:mb-10">
+          <div className="landing-brand brand-lockup mb-6 md:mb-10">
             <span className="brand-sigil" aria-hidden="true" />
             <div>
               <p className="eyebrow">The Aluminum Citadel awaits</p>
@@ -71,19 +71,19 @@ export default function LandingPage() {
             Justin&apos;s
             <span className="block text-grease">Feats of Strength</span>
           </h1>
-          <p className="mt-4 max-w-xl text-sm leading-6 text-aluminum-300 md:mt-5 md:text-lg md:leading-7">
+          <p className="landing-copy mt-4 max-w-xl text-sm leading-6 text-aluminum-300 md:mt-5 md:text-lg md:leading-7">
             Choose an allegiance in secret. Power the boss—or grease his downfall.
             Every phone controls the same living arena. No install. No accounts.
           </p>
 
-          <div className="mt-5 flex flex-wrap gap-2 md:mt-8">
+          <div className="landing-chips mt-5 flex flex-wrap gap-2 md:mt-8">
             <span className="hud-chip">No install</span>
             <span className="hud-chip">Anonymous sides</span>
             <span className="hud-chip">One live arena</span>
           </div>
         </div>
 
-        <div className="forge-panel p-4 md:p-7">
+        <div className="landing-entry forge-panel p-4 md:p-7">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
               <p className="eyebrow">Enter the arena</p>
