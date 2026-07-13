@@ -28,8 +28,8 @@ Three layers. Each one does the only job it's good at.
           │ (pages, API)              │ (the live game)
           ▼                           ▼
  ┌─────────────────────┐    ┌──────────────────────────┐
- │  VERCEL             │    │  PARTYKIT ROOM*          │
- │  the Next.js app    │◀───│  party/server.ts +       │
+ │  VERCEL             │    │  ROOM SERVER*            │
+ │  the Next.js app    │◀───│  server/game/server.ts + │
  │  + API routes:      │    │  server/game/core.ts     │
  │   GET /api/config   │    │  ONE live room, ticking  │
  │   GET /api/leaderb. │    │  25 times/sec. The single│
@@ -50,18 +50,18 @@ Three layers. Each one does the only job it's good at.
 open, so messages flow instantly in both directions — unlike a normal page
 load, which asks one question, gets one answer, and hangs up.
 
-\* A **PartyKit room** is one long-lived server object (a Cloudflare Durable
-Object) that owns the room's live state in memory and personally handles every
-message for it — so there is exactly one copy of the truth and no two servers
-can disagree. All game logic lives in `server/game/core.ts`; `party/server.ts`
-is just the WebSocket + tick adapter around it.
+\* The **room server** is one long-lived Node process that owns the room's live
+state in memory and personally handles every message for it — so there is
+exactly one copy of the truth and no two servers can disagree. All game logic
+lives in `server/game/core.ts` (`RoomCore`, transport-agnostic);
+`server/game/server.ts` is just the Socket.IO + tick adapter around it.
 
 **Why the game loop can't run on Vercel:** Vercel serverless functions are
 request/response — one wakes up to answer a request, answers it, and dies. It
 keeps no memory between requests and can't run a 25-ticks-per-second loop for
 five minutes. A live game room needs one long-lived process that holds the
 roster, counts the mashes, and steps the simulation continuously. That process
-is the PartyKit room. Vercel serves the pages and the database API; the room
+is the room server. Vercel serves the pages and the database API; the room
 serves the match; Neon remembers what's worth remembering.
 
 ---
@@ -87,8 +87,8 @@ Two processes, two terminals:
 # terminal 1 — the Next.js app (pages + API)
 pnpm dev
 
-# terminal 2 — the PartyKit room server (the live game room, on port 1999)
-pnpm dev:party
+# terminal 2 — the room server (the live game room, on port 1999)
+pnpm dev:server
 ```
 
 Or the one-terminal shortcut that runs both:
@@ -104,12 +104,11 @@ that's the big screen.
 
 1. Find your laptop's LAN IP (macOS: `ipconfig getifaddr en0`, Linux:
    `hostname -I`, Windows: `ipconfig`). Say it's `192.168.1.42`.
-2. In `.env.local`, set the PartyKit host to that IP so phones can reach the
-   room server (the default `127.0.0.1` means "this device," which on a phone
-   is the phone):
+2. In `.env.local`, set the room server URL to that IP so phones can reach it
+   (the default `127.0.0.1` means "this device," which on a phone is the phone):
 
    ```
-   NEXT_PUBLIC_PARTYKIT_HOST=192.168.1.42:1999
+   NEXT_PUBLIC_GAME_SERVER_URL=http://192.168.1.42:1999
    ```
 3. Restart `pnpm dev` (Next.js bakes `NEXT_PUBLIC_` values in at startup).
 4. Phones open `http://192.168.1.42:3000`, type a name, **Join as Team
@@ -129,8 +128,8 @@ database-driven tuning.
    `openssl rand -hex 24`). Match **results** are written by the room
    calling `POST /api/results`, and that route *fails closed* without the
    secret — a database with no secret means the leaderboard never fills.
-   `pnpm dev` reads `.env.local`; for the room server, `partykit dev` also
-   reads `.env` (or pass vars via `partykit env`).
+   `pnpm dev` reads `.env.local`; the room server (`pnpm dev:server`) reads
+   the same `.env.local` too.
 5. Apply the migrations, then seed the tuning table:
 
 ```bash
@@ -185,46 +184,44 @@ just need a connection string.)
    | `DATABASE_URL`                 | your Neon connection string                                        |
    | `INTERNAL_API_SECRET`          | a random secret — generate with `openssl rand -hex 24`             |
    | `APP_BASE_URL`                 | your Vercel URL, e.g. `https://feats.example.com`                  |
-   | `NEXT_PUBLIC_PARTYKIT_HOST`    | your PartyKit host (from part c), e.g. `festivus-game.you.partykit.dev` |
+   | `NEXT_PUBLIC_GAME_SERVER_URL`  | your room server URL (from part c), e.g. `https://festivus-room.up.railway.app` |
    | `NEXT_PUBLIC_JUSTIN_PHOTO_URL` | *(optional)* URL of the boss's face photo                          |
    | `NEXT_PUBLIC_BOSS_NAME`        | *(optional)* what everyone calls the protagonist (default: Justin) |
 
-### (c) PartyKit — the live room
+### (c) The room server — the live room
 
-The realtime room is a [PartyKit](https://docs.partykit.io) server
-(`party/server.ts`, a thin adapter over `server/game/core.ts`). It runs on
-Cloudflare's edge as a stateful room object with a ~25 Hz tick — the one
-thing Vercel functions can't host. Deploy *is* the configuration: no
-dashboard, no tokens, no runner configs.
+The realtime room is a small **Socket.IO server** (`server/game/server.ts`, a
+thin adapter over `server/game/core.ts`) that holds the room state and runs a
+~25 Hz tick — the one thing Vercel functions can't host. It runs on **any
+always-on Node host**: [Railway](https://railway.app), Render, Fly, a $5 VPS.
+No domain, no special platform features (just WebSockets on `$PORT`).
 
-1. **Log in** (creates your account via GitHub — no signup form):
-   ```
-   npx partykit login
-   ```
-2. **Deploy** from the repo root:
-   ```
-   npx partykit deploy          # or: pnpm deploy:party
-   ```
-   It prints your host: `festivus-game.<your-github-username>.partykit.dev`.
-3. **Point the app at it:** set `NEXT_PUBLIC_PARTYKIT_HOST` on Vercel to that
-   host (hostname only — no `https://`, no path) and redeploy the Vercel app.
+Using **Railway** (simplest):
 
-That's it — the room is live. The two commands above are the entire manual
-surface.
+1. At [railway.app](https://railway.app), sign in with GitHub → **New Project**
+   → **Deploy from GitHub repo** → pick this repo. Railway reads `railway.json`
+   and runs `pnpm start:server` (the room server, not Next.js).
+2. When it's live, open the service → **Settings → Networking → Generate Domain**.
+   Copy the URL, e.g. `https://festivus-room.up.railway.app`.
+3. **Point the app at it:** set `NEXT_PUBLIC_GAME_SERVER_URL` on Vercel to that
+   full URL (with `https://`) and redeploy the Vercel app.
 
-**Optional (durable leaderboard).** The room plays fine with no extra env,
-but to persist match results and load `level_config` tuning it needs to reach
-your Next.js API. Give the PartyKit server two vars:
+That's it — the room is live. No CLI required; a `railway up` from the repo
+works too if you prefer the terminal.
+
+**Optional (durable leaderboard).** The room plays fine with no extra env, but
+to persist match results and load `level_config` tuning it needs to reach your
+Next.js API. Set two variables **on the Railway service**:
 ```
-npx partykit env add APP_BASE_URL          # your Vercel URL
-npx partykit env add INTERNAL_API_SECRET   # SAME value as on Vercel
+APP_BASE_URL         = your Vercel URL, e.g. https://feats.example.com
+INTERNAL_API_SECRET  = the SAME value you set on Vercel
 ```
-Without them, persistence simply no-ops (the game is unaffected).
+Without them, persistence simply no-ops (the game is unaffected). You can also
+set `APP_ORIGIN` to your Vercel URL to restrict CORS (defaults to `*`).
 
-> PartyKit auto-reconnects the client, so a dropped connection heals itself.
-> One room object serves everyone; it sleeps when empty and wakes to the lobby
-> on the next connection — the same "everyone went home mid-match" behavior the
-> game already expects.
+> Socket.IO auto-reconnects the client, so a dropped connection heals itself.
+> One server hosts the single shared room; when the last person leaves it resets
+> to a fresh lobby for the next crowd.
 
 ---
 
@@ -447,12 +444,12 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
 
 ## Troubleshooting
 
-- **`pnpm dev:party` says port 1999 is busy.** Another copy of the room is
+- **`pnpm dev:server` says port 1999 is busy.** Another copy of the room is
   still running (often a leftover `pnpm dev:all`). Find and stop it:
   `lsof -i :1999` then `kill <pid>`.
 - **Phones can't load the page or join the room.** Your laptop's firewall is
   probably blocking inbound connections — allow ports **3000** (pages) and
-  **1999** (the room). Also confirm `NEXT_PUBLIC_PARTYKIT_HOST` uses your
+  **1999** (the room). Also confirm `NEXT_PUBLIC_GAME_SERVER_URL` uses your
   LAN IP, not `127.0.0.1`, and that you restarted `pnpm dev` after changing
   it. Phone and laptop must be on the same network (guest wifi often isolates
   devices from each other).
@@ -465,8 +462,10 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
   set but `INTERNAL_API_SECRET` isn't: `/api/results` refuses writes without
   it and the room logs `match NOT persisted`. Set both, run
   `pnpm db:migrate && pnpm db:seed`, restart both processes.
-- **`partykit deploy` says "Missing entry point."** Run it from the repo root
-  (where `partykit.json` lives), not from your home directory.
+- **Room server on Railway won't start / builds the wrong thing.** Confirm the
+  service start command is `pnpm start:server` (Railway reads this from
+  `railway.json`), not `next start` — the room server is separate from the
+  Vercel app. Its logs should print `Festivus room server listening on :<port>`.
 - **Set `NEXT_PUBLIC_JUSTIN_PHOTO_URL` but Justin's face didn't change.**
   The URL must allow cross-origin image loading (CORS) — the PixiJS canvas
   loads it as a texture, and browsers block canvas access to images from
@@ -512,10 +511,9 @@ render/
   scenes/                 one PixiJS scene per event, + backdrop + jack-in-the-box
   toolkit.ts              shared drawing helpers (Justin's head, poles, water)
 server/game/
-  core.ts                 THE game server: roster, tick, anonymity tokens, rate cap (transport-agnostic)
-party/
-  server.ts               PartyKit host — WebSocket + 25 Hz tick adapter over core.ts
-partykit.json             PartyKit config (name, entry point)
+  core.ts                 THE game logic: roster, tick, anonymity tokens, rate cap (transport-agnostic)
+  server.ts               Socket.IO room server — WebSocket + 25 Hz tick adapter over core.ts (pnpm start:server)
+railway.json              Railway deploy config (runs the room server, not Next.js)
 scripts/
   simulate.ts             pnpm sim — headless full-match promise-checker (drives core.ts directly)
 public/assets/            static files (justin-placeholder.svg lives here)

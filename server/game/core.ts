@@ -7,8 +7,8 @@
  * talks to the outside world through a small `Transport` (broadcast + send
  * to one connection) injected by whoever hosts it:
  *
- *   - `party/server.ts`  — the PartyKit adapter (production)
- *   - `scripts/simulate.ts` — an in-memory transport (headless test)
+ *   - `server/game/server.ts` — the Socket.IO server (production)
+ *   - `scripts/simulate.ts`   — an in-memory transport (headless test)
  *
  * The helper functions below are ported verbatim from the old actor; they
  * operate on a Rivet-actor-shaped context object `c` that RoomCore builds,
@@ -487,7 +487,9 @@ function freshVars(): Vars {
 }
 
 /** Sanitize the raw join params a client presents on connect. */
-export function sanitizeJoin(params: Partial<JoinParams> | null | undefined): ConnState {
+export function sanitizeJoin(
+  params: { role?: string; name?: string; stickyId?: string } | null | undefined,
+): ConnState {
   return {
     role: params?.role === "boss" ? "boss" : "player",
     name: cleanName(params?.name ?? ""),

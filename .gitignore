@@ -5,8 +5,6 @@ node_modules/
 .next/
 out/
 
-# partykit local dev state
-.partykit/
 
 # env files — never commit secrets. Copy .env.example instead.
 .env

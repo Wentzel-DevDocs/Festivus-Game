@@ -4,7 +4,7 @@
  * useRoom — the one React hook that connects a screen to the live room.
  *
  * Both the boss view and the player controller call this. It:
- *  - opens a PartySocket to the PartyKit room with {role, name, stickyId},
+ *  - opens a Socket.IO connection to the room server with {role, name, stickyId},
  *  - keeps the latest Snapshot in a ref updated at full server rate
  *    (~25 Hz) for the PixiJS canvas to interpolate from,
  *  - mirrors it into React state at a gentler ~10 Hz so the DOM
@@ -12,15 +12,14 @@
  *  - surfaces per-connection facts ("you": host flag, team, own side),
  *  - exposes typed action senders (tap, pickSide, host controls…).
  *
- * Transport: PartyKit is message-based, so a tiny RPC shim gives the
- * value-returning actions (pickSide, submitGrievance, switchToPlayer, hello)
- * their Promises back; taps and host controls are fire-and-forget. The wire
- * protocol mirrors party/server.ts. PartySocket auto-reconnects, so a dropped
- * connection heals itself instead of throwing.
+ * Transport: value-returning actions (pickSide, submitGrievance,
+ * switchToPlayer, hello) use Socket.IO acks (`emitWithAck`); taps and host
+ * controls are fire-and-forget emits. Socket.IO auto-reconnects, so a dropped
+ * connection heals itself.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import PartySocket from "partysocket";
+import { io, type Socket } from "socket.io-client";
 import { GAME_CONFIG } from "@/lib/game/config";
 import type { FxEvent } from "@/lib/game/engine/types";
 import {
@@ -59,14 +58,13 @@ export interface RoomApi {
 /** How often the DOM-facing snapshot state refreshes. */
 const DOM_UPDATE_MS = 100;
 
-/** Where the PartyKit room lives (host only, no protocol). Local dev default. */
-const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "127.0.0.1:1999";
+/** The room server's URL. Local dev default; production is a Railway URL etc. */
+const GAME_SERVER_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://127.0.0.1:1999";
 
-/** A client bound to one PartySocket: snapshot/you listeners + action RPC. */
+/** A client bound to one socket: action RPC + fire-and-forget. */
 interface RoomConn {
   rpc<T>(method: string, args?: unknown): Promise<T | null>;
   fire(method: string, args?: unknown): void;
-  dispose(): void;
 }
 
 export function useRoom(join: JoinParams | null): RoomApi {
@@ -90,42 +88,24 @@ export function useRoom(join: JoinParams | null): RoomApi {
   useEffect(() => {
     if (!join || !joinKey) return;
 
-    const socket = new PartySocket({
-      host: PARTYKIT_HOST,
-      room: GAME_CONFIG.ROOM_ID,
-      // JoinParams travel as connection query — re-sent on every reconnect.
+    const socket: Socket = io(GAME_SERVER_URL, {
+      transports: ["websocket"],
+      // JoinParams travel as handshake query — re-sent on every reconnect.
       query: { role: join.role, name: join.name, stickyId: join.stickyId },
     });
 
-    // ── RPC shim: correlate {t:"rpc",id} → {t:"rpc:res",id,result} ──────────
-    let rpcId = 0;
-    const pending = new Map<number, (result: unknown) => void>();
     const rpc = <T,>(method: string, args?: unknown): Promise<T | null> =>
-      new Promise<T | null>((resolve) => {
-        const id = ++rpcId;
-        pending.set(id, (result) => resolve(result as T));
-        try {
-          socket.send(JSON.stringify({ t: "rpc", id, method, args }));
-        } catch {
-          pending.delete(id);
-          resolve(null);
-        }
-        // Don't leak a pending promise forever if a reply never arrives.
-        setTimeout(() => {
-          if (pending.delete(id)) resolve(null);
-        }, 5000);
-      });
+      socket
+        .timeout(5000)
+        .emitWithAck("rpc", { method, args })
+        .then((r) => r as T)
+        .catch(() => null);
     const fire = (method: string, args?: unknown) => {
-      try {
-        socket.send(JSON.stringify({ t: "msg", method, args }));
-      } catch {
-        /* not open yet — dropped, which is fine for taps/host controls */
-      }
+      socket.emit("msg", { method, args });
     };
+    connRef.current = { rpc, fire };
 
-    connRef.current = { rpc, fire, dispose: () => socket.close() };
-
-    const onSnapshot = (snap: Snapshot) => {
+    socket.on(EVT_SNAPSHOT, (snap: Snapshot) => {
       const buf = bufferRef.current;
       buf.previous = buf.latest;
       buf.previousAt = buf.latestAt;
@@ -139,31 +119,18 @@ export function useRoom(join: JoinParams | null): RoomApi {
         lastDomUpdate.current = now;
         setSnapshot(snap);
       }
-    };
-
-    socket.addEventListener("message", (e: MessageEvent) => {
-      let m: { t?: string; data?: unknown; id?: number; result?: unknown };
-      try {
-        m = JSON.parse(typeof e.data === "string" ? e.data : "");
-      } catch {
-        return;
-      }
-      if (m.t === EVT_SNAPSHOT) onSnapshot(m.data as Snapshot);
-      else if (m.t === EVT_YOU) setYou(m.data as YouMessage);
-      else if (m.t === "rpc:res" && typeof m.id === "number") {
-        pending.get(m.id)?.(m.result);
-        pending.delete(m.id);
-      }
     });
 
-    socket.addEventListener("open", () => {
+    socket.on(EVT_YOU, (msg: YouMessage) => setYou(msg));
+
+    socket.on("connect", () => {
       setStatus("connected");
       // Snapshot + "you" arrive push-style, but fetch "you" once in case this
       // is a reconnect that missed the onConnect send.
       void rpc<YouMessage>("hello").then((y) => y && setYou(y));
     });
-    socket.addEventListener("close", () => setStatus("disconnected"));
-    socket.addEventListener("error", () => setStatus("disconnected"));
+    socket.on("disconnect", () => setStatus("disconnected"));
+    socket.io.on("reconnect_attempt", () => setStatus("connecting"));
 
     return () => {
       socket.close();
@@ -192,10 +159,8 @@ export function useRoom(join: JoinParams | null): RoomApi {
         return res?.side ?? null;
       },
       async submitGrievance(text) {
-        const res = await (conn()?.rpc<{ ok: boolean; reason?: string }>(
-          "submitGrievance",
-          text,
-        ) ?? Promise.resolve(null));
+        const res = await (conn()?.rpc<{ ok: boolean; reason?: string }>("submitGrievance", text) ??
+          Promise.resolve(null));
         return res ?? { ok: false, reason: "not connected" };
       },
       hostStart() {
