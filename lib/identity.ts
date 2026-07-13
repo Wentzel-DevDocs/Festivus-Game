@@ -9,7 +9,7 @@
  * per-tab id there so the game still runs.
  *
  * The sticky id identifies a player's NAME and SCORE only — the server
- * never associates it with a help/hinder side (see server/rivet/room.ts).
+ * never associates it with a help/hinder side (see server/game/core.ts).
  */
 
 const ID_KEY = "festivus.stickyId";

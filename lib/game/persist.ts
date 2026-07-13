@@ -1,5 +1,5 @@
 /**
- * The shape the Rivet actor POSTs to /api/results when a match ends —
+ * The shape the room server POSTs to /api/results when a match ends —
  * the ONLY write path from live game to durable storage.
  *
  * Nothing in here can express "player X picked side Y": participants carry

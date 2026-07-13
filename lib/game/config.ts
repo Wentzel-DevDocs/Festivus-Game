@@ -6,7 +6,7 @@
  *  2. DEFAULT tuning numbers for every event.
  *
  * Tuning numbers are also seeded into the `level_config` table in Neon
- * (see db/seed.ts). At room start the Rivet actor fetches that table via
+ * (see db/seed.ts). At room start the room server fetches that table via
  * /api/config and OVERRIDES these defaults — so you can retune the game
  * from the database without redeploying. If the DB is unreachable, these
  * defaults keep the game fully playable.

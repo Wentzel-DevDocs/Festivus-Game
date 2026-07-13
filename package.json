@@ -10,9 +10,10 @@
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "next dev",
-    "dev:rivet": "tsx watch server/rivet/index.ts",
-    "dev:all": "concurrently -n next,rivet -c blue,magenta \"pnpm dev\" \"pnpm dev:rivet\"",
+    "dev:party": "partykit dev",
+    "dev:all": "concurrently -n next,party -c blue,magenta \"pnpm dev\" \"pnpm dev:party\"",
     "build": "next build",
+    "deploy:party": "partykit deploy",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
@@ -24,10 +25,10 @@
     "@neondatabase/serverless": "^1.0.1",
     "drizzle-orm": "^0.44.2",
     "next": "^16.2.10",
+    "partysocket": "^1.3.0",
     "pixi.js": "^8.6.6",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "rivetkit": "^2.3.2"
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.10",
@@ -37,6 +38,7 @@
     "concurrently": "^9.1.2",
     "dotenv": "^16.5.0",
     "drizzle-kit": "^0.31.1",
+    "partykit": "^0.0.115",
     "tailwindcss": "^4.1.10",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"

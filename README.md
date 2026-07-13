@@ -28,15 +28,15 @@ Three layers. Each one does the only job it's good at.
           │ (pages, API)              │ (the live game)
           ▼                           ▼
  ┌─────────────────────┐    ┌──────────────────────────┐
- │  VERCEL             │    │  RIVET ACTOR*            │
- │  the Next.js app    │◀───│  server/rivet/room.ts    │
- │  + API routes:      │    │  ONE live room per key,  │
- │   GET /api/config   │    │  ticking 25 times/sec.   │
- │   GET /api/leaderb. │    │  The single source of    │
- │   POST /api/results │    │  truth for the match.    │
+ │  VERCEL             │    │  PARTYKIT ROOM*          │
+ │  the Next.js app    │◀───│  party/server.ts +       │
+ │  + API routes:      │    │  server/game/core.ts     │
+ │   GET /api/config   │    │  ONE live room, ticking  │
+ │   GET /api/leaderb. │    │  25 times/sec. The single│
+ │   POST /api/results │    │  source of match truth.  │
  └──────────┬──────────┘    └──────────────────────────┘
             │                 │
-            │ Drizzle         │  The actor calls the API:
+            │ Drizzle         │  The room calls the API:
             ▼                 │  · /api/config at room start
  ┌─────────────────────┐      │  · /api/leaderboard at room start
  │  NEON POSTGRES      │      │    and after each match
@@ -50,16 +50,18 @@ Three layers. Each one does the only job it's good at.
 open, so messages flow instantly in both directions — unlike a normal page
 load, which asks one question, gets one answer, and hangs up.
 
-\* An **actor** is one long-lived server object that owns a room's live state
-in memory and personally handles every message for that room — so there is
-exactly one copy of the truth and no two servers can disagree.
+\* A **PartyKit room** is one long-lived server object (a Cloudflare Durable
+Object) that owns the room's live state in memory and personally handles every
+message for it — so there is exactly one copy of the truth and no two servers
+can disagree. All game logic lives in `server/game/core.ts`; `party/server.ts`
+is just the WebSocket + tick adapter around it.
 
 **Why the game loop can't run on Vercel:** Vercel serverless functions are
 request/response — one wakes up to answer a request, answers it, and dies. It
 keeps no memory between requests and can't run a 25-ticks-per-second loop for
 five minutes. A live game room needs one long-lived process that holds the
 roster, counts the mashes, and steps the simulation continuously. That process
-is the Rivet actor. Vercel serves the pages and the database API; the actor
+is the PartyKit room. Vercel serves the pages and the database API; the room
 serves the match; Neon remembers what's worth remembering.
 
 ---
@@ -85,8 +87,8 @@ Two processes, two terminals:
 # terminal 1 — the Next.js app (pages + API)
 pnpm dev
 
-# terminal 2 — the Rivet actor (the live game room, on port 6420)
-pnpm dev:rivet
+# terminal 2 — the PartyKit room server (the live game room, on port 1999)
+pnpm dev:party
 ```
 
 Or the one-terminal shortcut that runs both:
@@ -102,12 +104,12 @@ that's the big screen.
 
 1. Find your laptop's LAN IP (macOS: `ipconfig getifaddr en0`, Linux:
    `hostname -I`, Windows: `ipconfig`). Say it's `192.168.1.42`.
-2. In `.env.local`, set the realtime endpoint to that IP so phones can reach
-   the actor (the default `127.0.0.1` means "this device," which on a phone
+2. In `.env.local`, set the PartyKit host to that IP so phones can reach the
+   room server (the default `127.0.0.1` means "this device," which on a phone
    is the phone):
 
    ```
-   NEXT_PUBLIC_RIVET_ENDPOINT=http://192.168.1.42:6420
+   NEXT_PUBLIC_PARTYKIT_HOST=192.168.1.42:1999
    ```
 3. Restart `pnpm dev` (Next.js bakes `NEXT_PUBLIC_` values in at startup).
 4. Phones open `http://192.168.1.42:3000`, type a name, **Join as Team
@@ -124,11 +126,11 @@ database-driven tuning.
 2. On the project page, click **Connect** and copy the connection string.
 3. Paste it into `.env.local` as `DATABASE_URL=postgres://...`.
 4. Also set `INTERNAL_API_SECRET` in `.env.local` (generate one with
-   `openssl rand -hex 24`). Match **results** are written by the actor
+   `openssl rand -hex 24`). Match **results** are written by the room
    calling `POST /api/results`, and that route *fails closed* without the
    secret — a database with no secret means the leaderboard never fills.
-   Both `pnpm dev` and `pnpm dev:rivet` read `.env.local`, so one line
-   covers both processes.
+   `pnpm dev` reads `.env.local`; for the room server, `partykit dev` also
+   reads `.env` (or pass vars via `partykit env`).
 5. Apply the migrations, then seed the tuning table:
 
 ```bash
@@ -148,7 +150,7 @@ What each table stores, one line each:
 | `match_participants` | Per match, per player: how many mashes they landed. Effort only.             |
 | `round_results`      | Per event, per match: force totals and headcounts **per side** — aggregates, never people. |
 | `grievances`         | The aired grievances as bare text, tied to a match.                          |
-| `level_config`       | One row per event: the tuning numbers (`params_json`) the actor loads at room start. |
+| `level_config`       | One row per event: the tuning numbers (`params_json`) the room loads at room start. |
 
 > **Deliberate hole in the schema — do not fill it.** The `grievances` table
 > has **no author column**, and nothing anywhere in the database stores who
@@ -183,78 +185,46 @@ just need a connection string.)
    | `DATABASE_URL`                 | your Neon connection string                                        |
    | `INTERNAL_API_SECRET`          | a random secret — generate with `openssl rand -hex 24`             |
    | `APP_BASE_URL`                 | your Vercel URL, e.g. `https://feats.example.com`                  |
-   | `NEXT_PUBLIC_RIVET_ENDPOINT`   | where browsers reach your Rivet actor (from part c)                |
-   | `NEXT_PUBLIC_RIVET_TOKEN`      | *(optional)* publishable client token, if your Rivet namespace needs one |
+   | `NEXT_PUBLIC_PARTYKIT_HOST`    | your PartyKit host (from part c), e.g. `festivus-game.you.partykit.dev` |
    | `NEXT_PUBLIC_JUSTIN_PHOTO_URL` | *(optional)* URL of the boss's face photo                          |
    | `NEXT_PUBLIC_BOSS_NAME`        | *(optional)* what everyone calls the protagonist (default: Justin) |
 
-### (c) Rivet Cloud — the live room
+### (c) PartyKit — the live room
 
-Two ways to host the actor. **Serverless is the simplest** — no extra
-infrastructure at all.
+The realtime room is a [PartyKit](https://docs.partykit.io) server
+(`party/server.ts`, a thin adapter over `server/game/core.ts`). It runs on
+Cloudflare's edge as a stateful room object with a ~25 Hz tick — the one
+thing Vercel functions can't host. Deploy *is* the configuration: no
+dashboard, no tokens, no runner configs.
 
-#### Serverless (recommended): the actor runs inside your Vercel app
+1. **Log in** (creates your account via GitHub — no signup form):
+   ```
+   npx partykit login
+   ```
+2. **Deploy** from the repo root:
+   ```
+   npx partykit deploy          # or: pnpm deploy:party
+   ```
+   It prints your host: `festivus-game.<your-github-username>.partykit.dev`.
+3. **Point the app at it:** set `NEXT_PUBLIC_PARTYKIT_HOST` on Vercel to that
+   host (hostname only — no `https://`, no path) and redeploy the Vercel app.
 
-The app exposes a RivetKit **serverless runner** at `/api/rivet`
-(`app/api/rivet/[[...slug]]/route.ts`). In this mode the Rivet Engine calls
-INTO your Vercel deployment to execute the room actor; browsers still
-connect to Rivet's gateway with the publishable token, and Rivet holds the
-WebSockets (which Vercel functions can't).
+That's it — the room is live. The two commands above are the entire manual
+surface.
 
-1. In the [Rivet Cloud](https://rivet.dev) dashboard, create a project +
-   namespace.
-2. Copy the two connection URLs the dashboard gives you and set on Vercel:
-   - `RIVET_ENDPOINT` = the **secret** (`sk_…`) URL — server-side env,
-     never `NEXT_PUBLIC_`.
-   - `NEXT_PUBLIC_RIVET_ENDPOINT` = the **publishable** (`pk_…`) URL —
-     this ships to browsers by design. Don't also set
-     `NEXT_PUBLIC_RIVET_TOKEN`; the token is already inside the URL.
-3. In the dashboard, create a **serverless runner config** for the
-   namespace: name it exactly **`default`** (that's the pool name rivetkit
-   clients request), URL `https://<your-app>.vercel.app/api/rivet`,
-   request lifespan ≤ 300 s (the route's `maxDuration`). Rivet Cloud's
-   connection-URL tokens are data-plane only, so the app cannot create
-   this entry for you — the dashboard is the only writer.
-4. Redeploy, then open the game. If it doesn't connect, curl
-   `https://<your-app>.vercel.app/api/rivet/provision-status` — it probes
-   every Rivet API call this deployment's tokens may make and names
-   exactly what's missing (`no 'default' runner config…` means step 3).
+**Optional (durable leaderboard).** The room plays fine with no extra env,
+but to persist match results and load `level_config` tuning it needs to reach
+your Next.js API. Give the PartyKit server two vars:
+```
+npx partykit env add APP_BASE_URL          # your Vercel URL
+npx partykit env add INTERNAL_API_SECRET   # SAME value as on Vercel
+```
+Without them, persistence simply no-ops (the game is unaffected).
 
-On deployments whose tokens DO have management permissions (self-hosted
-engine, broader tokens), the route **registers the runner config itself**
-on first contact (`server/rivet/provision.ts`) and step 3 becomes
-unnecessary. Only the **production** deployment self-registers (a poked
-preview deploy must not repoint the live pool); set `RIVET_RUNNER_URL`
-to your `/api/rivet` URL on non-Vercel hosts or custom domains.
-
-Note: one function invocation hosts the room for up to `maxDuration`
-(300 s in the route file — the Vercel Hobby ceiling; raise it to 800 on
-Pro so a whole match never spans a handoff).
-
-#### Serverful (fallback): run the actor as its own process
-
-The `server/rivet` process runs on **any always-on Node host** — a machine
-that keeps one process alive around the clock. Vercel functions can't do
-this (see "How it's put together"), but Railway, Fly.io, or a $5 VPS can.
-
-1. Create a project + namespace in the Rivet dashboard.
-2. Give the actor its environment: `APP_BASE_URL` (your Vercel URL) and
-   `INTERNAL_API_SECRET` (the **same** value as on Vercel — this is how the
-   actor proves it's allowed to POST match results), plus the
-   `RIVET_ENDPOINT` / `RIVET_TOKEN` / `RIVET_NAMESPACE` values from your
-   Rivet dashboard.
-3. Deploy the actor and point `NEXT_PUBLIC_RIVET_ENDPOINT` (on Vercel) at the
-   endpoint Rivet gives you, then redeploy the Vercel app so browsers pick it
-   up.
-
-> Rivet's CLI and deploy flow are actively evolving, so follow
-> [rivet.gg/docs](https://rivet.gg/docs) for the current deploy command rather
-> than trusting a README snapshot.
-
-Run the same thing `pnpm dev:rivet` runs (`tsx server/rivet/index.ts`, or
-compile it first) with the env vars above. Because RivetKit embeds its own
-engine you can even skip Rivet Cloud entirely: expose the port and point
-`NEXT_PUBLIC_RIVET_ENDPOINT` straight at your host.
+> PartyKit auto-reconnects the client, so a dropped connection heals itself.
+> One room object serves everyone; it sleeps when empty and wakes to the lobby
+> on the next connection — the same "everyone went home mid-match" behavior the
+> game already expects.
 
 ---
 
@@ -388,7 +358,7 @@ output, and register it in
 `DEFAULT_EVENT_PARAMS` in [`lib/game/config.ts`](lib/game/config.ts) and run
 `pnpm db:seed` so a `level_config` row exists to tune later. Skippable: an
 event with no entry anywhere falls back to its module's own `durationSec`
-plus generic force numbers (see `eventCtx` in `server/rivet/room.ts`) — but
+plus generic force numbers (see `eventCtx` in `server/game/core.ts`) — but
 add the entry if your event reads custom params like `slipAmount`, because
 the generic fallback only carries the common three.
 
@@ -420,7 +390,7 @@ zero/negative durations are ignored rather than trusted.) So:
 "Your side stays secret" is the game's one hard rule. It holds because each
 layer is *incapable* of telling on you:
 
-- **Ephemeral tokens.** When you pick a side, the actor mints a random token
+- **Ephemeral tokens.** When you pick a side, the room mints a random token
   and keeps `token → side` and `player → token` in two in-memory maps
   (`vars`), which are **cleared every round and never written anywhere**. If
   the process sleeps, sides evaporate.
@@ -434,7 +404,7 @@ layer is *incapable* of telling on you:
 - **The boss is a spectator.** Boss connections' taps and side-picks are
   refused server-side, so the big screen can't probe the room.
 - **Server-side rate cap.** ~12 counted taps/sec per *person* (keyed by
-  sticky id, so extra tabs don't multiply it), enforced by the actor — a
+  sticky id, so extra tabs don't multiply it), enforced by the room — a
   modified client gains nothing.
 - **No motion tells.** During the active window, the public per-player mash
   counters are frozen at their round-start values (they catch up at the
@@ -452,8 +422,9 @@ Don't take the README's word for it:
 pnpm sim
 ```
 
-That boots the real actor, plays a full match with 1 boss + 5 players + one
-cheater, and **asserts all of the above end-to-end** — including a sweep of
+That drives the real room logic (`server/game/core.ts`), plays a full match
+with 1 boss + 5 players + one cheater, and **asserts all of the above
+end-to-end** — including a sweep of
 every single snapshot for any `side`, `stickyId`, or token-shaped field.
 If anyone (including you) accidentally breaks the promise, `pnpm sim` fails.
 
@@ -463,7 +434,7 @@ If anyone (including you) accidentally breaks the promise, `pnpm sim` fails.
 
 ```bash
 pnpm typecheck   # TypeScript strict — no build, just checks the types
-pnpm sim         # headless full match against the REAL actor (~40 s):
+pnpm sim         # headless full match against the REAL room logic (~40 s):
                  # phases advance, boss inputs refused, rate cap holds,
                  # tug teams assigned, anonymity sweep, approval math,
                  # champion = top masher. Exits 0 pass / 1 fail. No DB needed.
@@ -476,12 +447,12 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
 
 ## Troubleshooting
 
-- **`pnpm dev:rivet` says port 6420 is busy.** Another copy of the actor is
-  still running (often a leftover `pnpm dev:all` or a `pnpm sim` that didn't
-  exit). Find and stop it: `lsof -i :6420` then `kill <pid>`.
+- **`pnpm dev:party` says port 1999 is busy.** Another copy of the room is
+  still running (often a leftover `pnpm dev:all`). Find and stop it:
+  `lsof -i :1999` then `kill <pid>`.
 - **Phones can't load the page or join the room.** Your laptop's firewall is
   probably blocking inbound connections — allow ports **3000** (pages) and
-  **6420** (the actor). Also confirm `NEXT_PUBLIC_RIVET_ENDPOINT` uses your
+  **1999** (the room). Also confirm `NEXT_PUBLIC_PARTYKIT_HOST` uses your
   LAN IP, not `127.0.0.1`, and that you restarted `pnpm dev` after changing
   it. Phone and laptop must be on the same network (guest wifi often isolates
   devices from each other).
@@ -492,11 +463,10 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
 - **Leaderboard is blank / nothing persists.** Either no `DATABASE_URL`
   (that's the supported demo mode — matches still play), **or** the DB is
   set but `INTERNAL_API_SECRET` isn't: `/api/results` refuses writes without
-  it and the actor logs `match NOT persisted`. Set both, run
+  it and the room logs `match NOT persisted`. Set both, run
   `pnpm db:migrate && pnpm db:seed`, restart both processes.
-- **Port 6420 acts haunted — connects hang, phases frozen.** A previous
-  `rivet-engine` child process outlived its parent. `pkill -f rivet-engine`,
-  delete the `.rivetkit/` folder, and start `pnpm dev:rivet` again.
+- **`partykit deploy` says "Missing entry point."** Run it from the repo root
+  (where `partykit.json` lives), not from your home directory.
 - **Set `NEXT_PUBLIC_JUSTIN_PHOTO_URL` but Justin's face didn't change.**
   The URL must allow cross-origin image loading (CORS) — the PixiJS canvas
   loads it as a texture, and browsers block canvas access to images from
@@ -514,9 +484,9 @@ app/                      Next.js pages + API routes (this part runs on Vercel)
   page.tsx                landing page — join as player or boss, no room codes
   play/page.tsx           the phone controller (side picker + MASH button)
   boss/page.tsx           the big-screen broadcast (stage, host controls, feed)
-  api/config/route.ts     GET  level_config tuning  → read by the actor at room start
-  api/leaderboard/route.ts GET all-time leaderboard → actor + UI
-  api/results/route.ts    POST match results ← the actor (guarded by INTERNAL_API_SECRET)
+  api/config/route.ts     GET  level_config tuning  → read by the room at start
+  api/leaderboard/route.ts GET all-time leaderboard → room + UI
+  api/results/route.ts    POST match results ← the room (guarded by INTERNAL_API_SECRET)
   globals.css             Tailwind v4 theme: aluminum, memo paper, stamps
 proxy.ts                  Next 16 request proxy: security headers + the v2 multi-room hook
 components/               React UI pieces (MashButton, SidePicker, GrievanceFeed, …)
@@ -533,7 +503,7 @@ lib/
   game/events/            the five feats of strength — one small file each
   game/filter.ts          name + grievance text cleanup
   game/persist.ts         the shape of the one durable write per match
-  realtime/protocol.ts    every message shape shared between browser and actor
+  realtime/protocol.ts    every message shape shared between browser and room
   realtime/useRoom.ts     the React hook that speaks WebSocket to the room
   identity.ts             sticky localStorage id (name + score only, never a side)
   sound.ts                bleeps (WebAudio, respects mute)
@@ -541,12 +511,13 @@ render/
   core.tsx                GameCanvas: Pixi boot, scene swapping, 25 Hz → 60 fps interpolation
   scenes/                 one PixiJS scene per event, + backdrop + jack-in-the-box
   toolkit.ts              shared drawing helpers (Justin's head, poles, water)
-server/rivet/
-  index.ts                actor process entry point (pnpm dev:rivet)
-  registry.ts             RivetKit setup — which actors this server hosts
-  room.ts                 THE game server: roster, tick loop, anonymity tokens, rate cap
+server/game/
+  core.ts                 THE game server: roster, tick, anonymity tokens, rate cap (transport-agnostic)
+party/
+  server.ts               PartyKit host — WebSocket + 25 Hz tick adapter over core.ts
+partykit.json             PartyKit config (name, entry point)
 scripts/
-  simulate.ts             pnpm sim — the headless full-match promise-checker
+  simulate.ts             pnpm sim — headless full-match promise-checker (drives core.ts directly)
 public/assets/            static files (justin-placeholder.svg lives here)
 ```
 
