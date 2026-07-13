@@ -190,10 +190,39 @@ just need a connection string.)
 
 ### (c) Rivet Cloud — the live room
 
-The `server/rivet` process must run **somewhere persistent** — a host that
-keeps one Node process alive around the clock. Vercel cannot do this (see
-"How it's put together"); [Rivet Cloud](https://rivet.gg)'s free tier can, and
-it's what RivetKit is built for.
+Two ways to host the actor. **Serverless is the simplest** — no extra
+infrastructure at all.
+
+#### Serverless (recommended): the actor runs inside your Vercel app
+
+The app exposes a RivetKit **serverless runner** at `/api/rivet`
+(`app/api/rivet/[[...slug]]/route.ts`). In this mode the Rivet Engine calls
+INTO your Vercel deployment to execute the room actor; browsers still
+connect to Rivet's gateway with the publishable token, and Rivet holds the
+WebSockets (which Vercel functions can't).
+
+1. In the [Rivet Cloud](https://rivet.dev) dashboard, create a project +
+   namespace and choose **Serverless**; set the runner URL to
+   `https://<your-app>.vercel.app/api/rivet`.
+2. Copy the two connection URLs the dashboard gives you and set on Vercel:
+   - `RIVET_ENDPOINT` = the **secret** (`sk_…`) URL — server-side env,
+     never `NEXT_PUBLIC_`.
+   - `NEXT_PUBLIC_RIVET_ENDPOINT` = the **publishable** (`pk_…`) URL —
+     this ships to browsers by design. Don't also set
+     `NEXT_PUBLIC_RIVET_TOKEN`; the token is already inside the URL.
+3. Redeploy. The dashboard's health check probes
+   `/api/rivet/health` and should go green; you can verify yourself:
+   `curl https://<your-app>.vercel.app/api/rivet/health`.
+
+Note: one function invocation hosts the room for up to `maxDuration`
+(300 s in the route file — the Vercel Hobby ceiling; raise it to 800 on
+Pro so a whole match never spans a handoff).
+
+#### Serverful (fallback): run the actor as its own process
+
+The `server/rivet` process runs on **any always-on Node host** — a machine
+that keeps one process alive around the clock. Vercel functions can't do
+this (see "How it's put together"), but Railway, Fly.io, or a $5 VPS can.
 
 1. Create a project + namespace in the Rivet dashboard.
 2. Give the actor its environment: `APP_BASE_URL` (your Vercel URL) and
@@ -209,10 +238,10 @@ it's what RivetKit is built for.
 > [rivet.gg/docs](https://rivet.gg/docs) for the current deploy command rather
 > than trusting a README snapshot.
 
-**Fallback:** because RivetKit embeds its own engine, ANY always-on Node host
-works — Railway, Fly.io, a $5 VPS. Run the same thing `pnpm dev:rivet` runs
-(`tsx server/rivet/index.ts`, or compile it first) with the env vars above,
-expose its port, and point `NEXT_PUBLIC_RIVET_ENDPOINT` at it.
+Run the same thing `pnpm dev:rivet` runs (`tsx server/rivet/index.ts`, or
+compile it first) with the env vars above. Because RivetKit embeds its own
+engine you can even skip Rivet Cloud entirely: expose the port and point
+`NEXT_PUBLIC_RIVET_ENDPOINT` straight at your host.
 
 ---
 
