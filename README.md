@@ -209,18 +209,23 @@ WebSockets (which Vercel functions can't).
    - `NEXT_PUBLIC_RIVET_ENDPOINT` = the **publishable** (`pk_…`) URL —
      this ships to browsers by design. Don't also set
      `NEXT_PUBLIC_RIVET_TOKEN`; the token is already inside the URL.
-3. Redeploy, then open the game (or
-   `curl https://<your-app>.vercel.app/api/rivet/health`). On first contact
-   the route **registers itself** with Rivet as the namespace's `default`
-   serverless runner across every datacenter
-   (`server/rivet/provision.ts`) — there is no runner config to
-   hand-create in the dashboard, and nothing that can be misnamed. The
-   game page pokes this endpoint before every connect, so even a brand-new
-   namespace heals itself.
+3. In the dashboard, create a **serverless runner config** for the
+   namespace: name it exactly **`default`** (that's the pool name rivetkit
+   clients request), URL `https://<your-app>.vercel.app/api/rivet`,
+   request lifespan ≤ 300 s (the route's `maxDuration`). Rivet Cloud's
+   connection-URL tokens are data-plane only, so the app cannot create
+   this entry for you — the dashboard is the only writer.
+4. Redeploy, then open the game. If it doesn't connect, curl
+   `https://<your-app>.vercel.app/api/rivet/provision-status` — it probes
+   every Rivet API call this deployment's tokens may make and names
+   exactly what's missing (`no 'default' runner config…` means step 3).
 
-Only the **production** deployment self-registers (a poked preview deploy
-must not repoint the live pool). Hosting somewhere without Vercel's env,
-or on a custom domain? Set `RIVET_RUNNER_URL` to your `/api/rivet` URL.
+On deployments whose tokens DO have management permissions (self-hosted
+engine, broader tokens), the route **registers the runner config itself**
+on first contact (`server/rivet/provision.ts`) and step 3 becomes
+unnecessary. Only the **production** deployment self-registers (a poked
+preview deploy must not repoint the live pool); set `RIVET_RUNNER_URL`
+to your `/api/rivet` URL on non-Vercel hosts or custom domains.
 
 Note: one function invocation hosts the room for up to `maxDuration`
 (300 s in the route file — the Vercel Hobby ceiling; raise it to 800 on
