@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // The realtime room runs on PartyKit (separate deploy); the browser reaches
-  // it via NEXT_PUBLIC_PARTYKIT_HOST, which Next inlines automatically as a
-  // NEXT_PUBLIC_* var — no config needed here.
+  // The realtime room is a small Node server (separate deploy); the browser
+  // reaches it via NEXT_PUBLIC_GAME_SERVER_URL, which Next inlines
+  // automatically as a NEXT_PUBLIC_* var — no config needed here.
   //
   // Justin's photo can live on any host, so allow remote images everywhere.
   // Tighten this to your own domain if you prefer.

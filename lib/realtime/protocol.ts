@@ -1,6 +1,6 @@
 /**
  * The realtime protocol — every shape that crosses the WebSocket, shared by
- * the PartyKit room (server) and the React pages (client).
+ * the room server (server/game/core.ts) and the React pages (client).
  *
  * AUTHORITATIVE MODEL: clients send INPUTS ONLY (a tap, a side pick); the
  * actor is the single source of truth. It counts mashes itself, rate-caps

@@ -2,7 +2,7 @@
  * Durable truth in Neon (Postgres) via Drizzle ORM.
  *
  * Written ONLY at boundaries (a player joins, a match ends) — never once
- * per tap. The PartyKit room holds live state in memory and flushes here
+ * per tap. The room server holds live state in memory and flushes here
  * through /api/results when a match finishes.
  *
  * ANONYMITY IS SCHEMA-DEEP: there is deliberately NO column anywhere that
