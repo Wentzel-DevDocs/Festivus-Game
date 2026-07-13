@@ -20,7 +20,7 @@
  */
 
 import { registry } from "@/server/rivet/registry";
-import { ensureRunnerConfig } from "@/server/rivet/provision";
+import { ensureRunnerConfig, provisionStatus } from "@/server/rivet/provision";
 
 // The engine's requests must never be served from any cache, and the actor
 // needs the Node.js runtime (not edge).
@@ -34,6 +34,14 @@ export const maxDuration = 300;
 
 const handler = async (request: Request) => {
   try {
+    // Debug endpoint: which Rivet API calls may this deployment's tokens
+    // make, and what did self-provisioning decide? (No secrets echoed.)
+    if (
+      request.method === "GET" &&
+      new URL(request.url).pathname === "/api/rivet/provision-status"
+    ) {
+      return await provisionStatus();
+    }
     // Self-register this deployment as the namespace's "default" serverless
     // runner (see provision.ts) — cached per process, so it costs one Rivet
     // API round-trip on the first request only. Skipped for the engine's
