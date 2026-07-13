@@ -10,13 +10,18 @@
  * `PUT /runner-configs/default` upsert covering every Rivet datacenter,
  * pointing the engine at this deployment's /api/rivet route.
  *
- * Rivet Cloud ACL reality (observed in production): the namespace-scoped
- * `sk_` token may NOT list datacenters (`acl.insufficient_permissions` —
- * it's a global operation), which also breaks rivetkit's own
- * `configurePool` path. So datacenter discovery tries the sk_ token first
- * and falls back to the publishable pk_ token; and if the config already
- * exists (e.g. dashboard-created), provisioning reports success instead
- * of failing requests that would have worked.
+ * Rivet Cloud ACL reality (observed in production): the connection-URL
+ * tokens (both `sk_` and `pk_`) are data-plane only — they may not list
+ * datacenters OR runner configs, not even in their own namespace
+ * (`acl.insufficient_permissions`), and `GET /runner-configs/{name}`
+ * 500s engine-side. This also breaks rivetkit's own `configurePool` path.
+ * On such namespaces the DASHBOARD is the only way to create the runner
+ * config (name it exactly "default", URL = this app's /api/rivet), and
+ * nothing here can even verify it exists — which is why the route treats
+ * provisioning as best-effort and never fails a request over it. The
+ * code below still tries every angle (sk then pk for datacenters,
+ * exists-check fallbacks) so permissive deployments — self-hosted engine,
+ * broader tokens — keep true zero-config self-registration.
  *
  * Guard rails:
  *  - No-op without RIVET_ENDPOINT (local dev) or without a resolvable

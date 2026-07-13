@@ -42,13 +42,19 @@ const handler = async (request: Request) => {
     ) {
       return await provisionStatus();
     }
-    // Self-register this deployment as the namespace's "default" serverless
-    // runner (see provision.ts) — cached per process, so it costs one Rivet
-    // API round-trip on the first request only. Skipped for the engine's
-    // own calls: the engine reaching us proves a config already exists, and
-    // a transient provisioning failure must never 500 live actor traffic.
+    // Best-effort: self-register this deployment as the namespace's
+    // "default" serverless runner (see provision.ts) — cached per process,
+    // so it costs one Rivet API round-trip on the first request only.
+    // Never fail the request over it: Rivet Cloud's connection-URL tokens
+    // are locked out of ALL management reads (observed live: 403
+    // acl.insufficient_permissions even for listing the namespace's own
+    // runner configs), so a dashboard-created config can't be verified
+    // from here and throwing would permanently 500 a working deployment.
+    // /api/rivet/provision-status carries the full diagnostics instead.
+    // Skipped for the engine's own calls — the engine reaching us proves a
+    // config exists.
     if (!(request.headers.get("user-agent") ?? "").startsWith("RivetEngine/")) {
-      await ensureRunnerConfig();
+      await ensureRunnerConfig().catch(() => {});
     }
     return await registry.handler(request);
   } catch (err) {
