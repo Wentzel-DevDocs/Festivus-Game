@@ -88,12 +88,14 @@ function parseAuthUrl(raw: string | undefined): Creds | null {
   if (!raw) return null;
   let url: URL;
   try {
-    url = new URL(raw);
+    // Trim first: a trailing newline in the env var otherwise lands inside
+    // the token and Rivet rejects it as "token_not_found".
+    url = new URL(raw.trim());
   } catch {
     return null;
   }
-  const namespace = decodeURIComponent(url.username) || process.env.RIVET_NAMESPACE || "";
-  const token = decodeURIComponent(url.password) || process.env.RIVET_TOKEN || "";
+  const namespace = (decodeURIComponent(url.username) || process.env.RIVET_NAMESPACE || "").trim();
+  const token = (decodeURIComponent(url.password) || process.env.RIVET_TOKEN || "").trim();
   if (!namespace || !token) return null;
   return { endpoint: `${url.protocol}//${url.host}`, namespace, token };
 }
@@ -117,7 +119,7 @@ function pkCreds(): Creds | null {
  * configure the namespace on Rivet Cloud.
  */
 function mgmtCreds(): Creds | null {
-  const token = process.env.RIVET_ACCESS_TOKEN;
+  const token = process.env.RIVET_ACCESS_TOKEN?.trim();
   if (!token) return null;
   const base = skCreds() ?? pkCreds();
   const namespace = base?.namespace ?? process.env.RIVET_NAMESPACE ?? "";
