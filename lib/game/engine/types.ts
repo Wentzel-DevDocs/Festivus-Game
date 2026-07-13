@@ -4,7 +4,7 @@
  * ANONYMITY BY CONSTRUCTION: notice that nothing in this file mentions a
  * player id, name, or connection. Event modules only ever see a SIDE INDEX
  * (0 = help Justin, 1 = hinder Justin; for tug-of-war, 0 = Team A, 1 = Team B).
- * The Rivet actor resolves "which side is this tap on?" through an ephemeral
+ * The room resolves "which side is this tap on?" through an ephemeral
  * per-round token held in memory, then throws the token away. An event module
  * literally cannot leak who picked what — it never knows.
  *

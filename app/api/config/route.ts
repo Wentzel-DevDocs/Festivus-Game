@@ -2,7 +2,7 @@
  * GET /api/config → per-event tuning parameters.
  *
  * Defaults from lib/game/config, overridden by any rows in level_config
- * (Neon). The Rivet actor calls this once at room start, so you can retune
+ * (Neon). The room server calls this once at room start, so you can retune
  * the game from the database without redeploying anything.
  */
 

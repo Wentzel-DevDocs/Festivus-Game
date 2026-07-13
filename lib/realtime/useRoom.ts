@@ -4,20 +4,23 @@
  * useRoom — the one React hook that connects a screen to the live room.
  *
  * Both the boss view and the player controller call this. It:
- *  - opens the RivetKit WebSocket connection with {role, name, stickyId},
+ *  - opens a PartySocket to the PartyKit room with {role, name, stickyId},
  *  - keeps the latest Snapshot in a ref updated at full server rate
  *    (~25 Hz) for the PixiJS canvas to interpolate from,
  *  - mirrors it into React state at a gentler ~10 Hz so the DOM
  *    (timers, leaderboards) re-renders cheaply,
  *  - surfaces per-connection facts ("you": host flag, team, own side),
  *  - exposes typed action senders (tap, pickSide, host controls…).
+ *
+ * Transport: PartyKit is message-based, so a tiny RPC shim gives the
+ * value-returning actions (pickSide, submitGrievance, switchToPlayer, hello)
+ * their Promises back; taps and host controls are fire-and-forget. The wire
+ * protocol mirrors party/server.ts. PartySocket auto-reconnects, so a dropped
+ * connection heals itself instead of throwing.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "rivetkit/client";
-// Type-only import: the actor's action signatures reach the browser as
-// TYPES; none of the server code lands in the bundle.
-import type { Registry } from "@/server/rivet/registry";
+import PartySocket from "partysocket";
 import { GAME_CONFIG } from "@/lib/game/config";
 import type { FxEvent } from "@/lib/game/engine/types";
 import {
@@ -39,13 +42,10 @@ export interface SnapshotBuffer {
 }
 
 export interface RoomApi {
-  /** Throttled (~10 Hz) snapshot for DOM rendering. */
   snapshot: Snapshot | null;
-  /** Full-rate buffer for the canvas (read inside requestAnimationFrame). */
   bufferRef: React.RefObject<SnapshotBuffer>;
   you: YouMessage | null;
   status: RoomStatus;
-  /** Register a listener for transient fx (sounds, shakes). Returns unsubscribe. */
   onFx(cb: (fx: FxEvent) => void): () => void;
   tap(): void;
   pickSide(side: 0 | 1): Promise<0 | 1 | null>;
@@ -59,18 +59,16 @@ export interface RoomApi {
 /** How often the DOM-facing snapshot state refreshes. */
 const DOM_UPDATE_MS = 100;
 
-type RoomConn = ReturnType<
-  ReturnType<typeof createClient<Registry>>["festivusRoom"]["getOrCreate"]
-> extends infer H
-  ? H extends { connect(params?: unknown): infer C }
-    ? C
-    : never
-  : never;
+/** Where the PartyKit room lives (host only, no protocol). Local dev default. */
+const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "127.0.0.1:1999";
 
-/**
- * Connect to the shared room. Pass null to stay disconnected (the landing
- * page does this until a name is chosen).
- */
+/** A client bound to one PartySocket: snapshot/you listeners + action RPC. */
+interface RoomConn {
+  rpc<T>(method: string, args?: unknown): Promise<T | null>;
+  fire(method: string, args?: unknown): void;
+  dispose(): void;
+}
+
 export function useRoom(join: JoinParams | null): RoomApi {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [you, setYou] = useState<YouMessage | null>(null);
@@ -92,88 +90,90 @@ export function useRoom(join: JoinParams | null): RoomApi {
   useEffect(() => {
     if (!join || !joinKey) return;
 
-    let cancelled = false;
-    let cleanup: (() => void) | null = null;
-
-    // Poke our own serverless runner route BEFORE dialing Rivet's gateway.
-    // The route self-registers this deployment as the namespace's runner
-    // config on first contact (see server/rivet/provision.ts); connecting
-    // to a namespace that has no runner config fails with
-    // actor.no_runner_config_configured, which the rivetkit client treats
-    // as fatal (no retry). Bounded so a cold serverless start can only
-    // delay joining, never block it.
-    const poke = Promise.race([
-      fetch("/api/rivet/health", { cache: "no-store" }).catch(() => null),
-      new Promise((resolve) => setTimeout(resolve, 5000)),
-    ]);
-
-    void poke.then(() => {
-      if (cancelled) return;
-
-      const client = createClient<Registry>({
-        endpoint: process.env.NEXT_PUBLIC_RIVET_ENDPOINT || "http://127.0.0.1:6420",
-        token: process.env.NEXT_PUBLIC_RIVET_TOKEN || undefined,
-      });
-
-      const conn = client.festivusRoom.getOrCreate([GAME_CONFIG.ROOM_ID]).connect(join);
-      connRef.current = conn as unknown as RoomConn;
-
-      const offSnapshot = conn.on(EVT_SNAPSHOT, (snap: Snapshot) => {
-        const buf = bufferRef.current;
-        buf.previous = buf.latest;
-        buf.previousAt = buf.latestAt;
-        buf.latest = snap;
-        buf.latestAt = performance.now();
-
-        // Fx are one-snapshot transients: fan out every one, immediately.
-        for (const fx of snap.fx) for (const cb of fxListeners.current) cb(fx);
-
-        // DOM state only needs ~10 Hz.
-        const now = performance.now();
-        if (now - lastDomUpdate.current >= DOM_UPDATE_MS) {
-          lastDomUpdate.current = now;
-          setSnapshot(snap);
-        }
-      });
-
-      const offYou = conn.on(EVT_YOU, (msg: YouMessage) => setYou(msg));
-      const offOpen = conn.onOpen(() => {
-        setStatus("connected");
-        // Snapshot + "you" both arrive push-style, but fetch "you" once in
-        // case this is a reconnect that missed the onConnect send.
-        void (conn as { hello(): Promise<YouMessage> }).hello().then(setYou).catch(() => {});
-      });
-      const offClose = conn.onClose(() => setStatus("disconnected"));
-
-      cleanup = () => {
-        offSnapshot();
-        offYou();
-        offOpen();
-        offClose();
-        void conn.dispose();
-        connRef.current = null;
-      };
+    const socket = new PartySocket({
+      host: PARTYKIT_HOST,
+      room: GAME_CONFIG.ROOM_ID,
+      // JoinParams travel as connection query — re-sent on every reconnect.
+      query: { role: join.role, name: join.name, stickyId: join.stickyId },
     });
 
+    // ── RPC shim: correlate {t:"rpc",id} → {t:"rpc:res",id,result} ──────────
+    let rpcId = 0;
+    const pending = new Map<number, (result: unknown) => void>();
+    const rpc = <T,>(method: string, args?: unknown): Promise<T | null> =>
+      new Promise<T | null>((resolve) => {
+        const id = ++rpcId;
+        pending.set(id, (result) => resolve(result as T));
+        try {
+          socket.send(JSON.stringify({ t: "rpc", id, method, args }));
+        } catch {
+          pending.delete(id);
+          resolve(null);
+        }
+        // Don't leak a pending promise forever if a reply never arrives.
+        setTimeout(() => {
+          if (pending.delete(id)) resolve(null);
+        }, 5000);
+      });
+    const fire = (method: string, args?: unknown) => {
+      try {
+        socket.send(JSON.stringify({ t: "msg", method, args }));
+      } catch {
+        /* not open yet — dropped, which is fine for taps/host controls */
+      }
+    };
+
+    connRef.current = { rpc, fire, dispose: () => socket.close() };
+
+    const onSnapshot = (snap: Snapshot) => {
+      const buf = bufferRef.current;
+      buf.previous = buf.latest;
+      buf.previousAt = buf.latestAt;
+      buf.latest = snap;
+      buf.latestAt = performance.now();
+
+      for (const fx of snap.fx) for (const cb of fxListeners.current) cb(fx);
+
+      const now = performance.now();
+      if (now - lastDomUpdate.current >= DOM_UPDATE_MS) {
+        lastDomUpdate.current = now;
+        setSnapshot(snap);
+      }
+    };
+
+    socket.addEventListener("message", (e: MessageEvent) => {
+      let m: { t?: string; data?: unknown; id?: number; result?: unknown };
+      try {
+        m = JSON.parse(typeof e.data === "string" ? e.data : "");
+      } catch {
+        return;
+      }
+      if (m.t === EVT_SNAPSHOT) onSnapshot(m.data as Snapshot);
+      else if (m.t === EVT_YOU) setYou(m.data as YouMessage);
+      else if (m.t === "rpc:res" && typeof m.id === "number") {
+        pending.get(m.id)?.(m.result);
+        pending.delete(m.id);
+      }
+    });
+
+    socket.addEventListener("open", () => {
+      setStatus("connected");
+      // Snapshot + "you" arrive push-style, but fetch "you" once in case this
+      // is a reconnect that missed the onConnect send.
+      void rpc<YouMessage>("hello").then((y) => y && setYou(y));
+    });
+    socket.addEventListener("close", () => setStatus("disconnected"));
+    socket.addEventListener("error", () => setStatus("disconnected"));
+
     return () => {
-      cancelled = true;
-      cleanup?.();
-      cleanup = null;
+      socket.close();
+      connRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joinKey]);
 
   return useMemo<RoomApi>(() => {
-    /** Fire-and-forget action call against the live connection. */
-    const call = <T,>(name: string, ...args: unknown[]): Promise<T | null> => {
-      const conn = connRef.current as unknown as Record<
-        string,
-        (...a: unknown[]) => Promise<T>
-      > | null;
-      if (!conn) return Promise.resolve(null);
-      return conn[name](...args).catch(() => null);
-    };
-
+    const conn = () => connRef.current;
     return {
       snapshot,
       bufferRef,
@@ -184,27 +184,32 @@ export function useRoom(join: JoinParams | null): RoomApi {
         return () => fxListeners.current.delete(cb);
       },
       tap() {
-        void call("tap");
+        conn()?.fire("tap");
       },
       async pickSide(side) {
-        const res = await call<{ ok: boolean; side: 0 | 1 | null }>("pickSide", side);
+        const res = await (conn()?.rpc<{ ok: boolean; side: 0 | 1 | null }>("pickSide", side) ??
+          Promise.resolve(null));
         return res?.side ?? null;
       },
       async submitGrievance(text) {
-        const res = await call<{ ok: boolean; reason?: string }>("submitGrievance", text);
+        const res = await (conn()?.rpc<{ ok: boolean; reason?: string }>(
+          "submitGrievance",
+          text,
+        ) ?? Promise.resolve(null));
         return res ?? { ok: false, reason: "not connected" };
       },
       hostStart() {
-        void call("hostStart");
+        conn()?.fire("hostStart");
       },
       hostSkip() {
-        void call("hostSkip");
+        conn()?.fire("hostSkip");
       },
       hostHideGrievance(id) {
-        void call("hostHideGrievance", id);
+        conn()?.fire("hostHideGrievance", id);
       },
       async switchToPlayer(name) {
-        const res = await call<{ ok: boolean }>("switchToPlayer", name);
+        const res = await (conn()?.rpc<{ ok: boolean }>("switchToPlayer", name ?? null) ??
+          Promise.resolve(null));
         return res?.ok ?? false;
       },
     };

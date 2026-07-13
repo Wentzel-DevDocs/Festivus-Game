@@ -1,5 +1,5 @@
 /**
- * The session runner — a small phase machine the Rivet actor drives once
+ * The session runner — a small phase machine the room server drives once
  * per tick. It owns WHEN things happen (auto-advance between phases); the
  * actor owns WHAT happens (via the hooks) and each event module owns HOW
  * its round plays.

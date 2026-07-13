@@ -5,8 +5,8 @@ node_modules/
 .next/
 out/
 
-# rivetkit local engine data (created by `pnpm dev:rivet`)
-.rivetkit/
+# partykit local dev state
+.partykit/
 
 # env files — never commit secrets. Copy .env.example instead.
 .env

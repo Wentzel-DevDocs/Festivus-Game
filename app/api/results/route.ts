@@ -1,7 +1,7 @@
 /**
  * POST /api/results → persist a finished match.
  *
- * Called by the Rivet actor ONLY (authenticated with INTERNAL_API_SECRET),
+ * Called by the room server ONLY (authenticated with INTERNAL_API_SECRET),
  * exactly once per match — never per tap. Writes, in order:
  *   1. the match row (aggregate approval + champion),
  *   2. player upserts (name, total_mashes +=, best_score, wins for champion),

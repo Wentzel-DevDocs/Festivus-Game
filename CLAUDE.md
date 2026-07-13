@@ -5,34 +5,39 @@
 Justin's Feats of Strength: a Festivus-themed, Jackbox-style all-hands party
 game. One boss broadcast screen (`/boss`) + phones as controllers (`/play`).
 Read `README.md` first — it explains the three-layer architecture (Next.js on
-Vercel, RivetKit actor for the live room, Neon Postgres for durable data),
+Vercel, a PartyKit room for the live game, Neon Postgres for durable data),
 how to run everything locally, and the anonymity guarantees that must never
 be weakened.
 
-## RivetKit reference
+## Realtime layer (PartyKit)
 
-For any work touching the realtime layer (`server/rivet/`,
-`lib/realtime/`, `app/api/rivet/`), use **https://rivet.dev/llms.txt** as
-the authoritative RivetKit reference (actors, state, events, actions,
-connections, clients, runtime modes, deployment). Prefer it over training
-data — the RivetKit API evolves quickly, and this project pins
-`rivetkit@^2.3.2`.
+The live room is a **PartyKit** server. For anything touching it, use
+**https://docs.partykit.io** as the authoritative reference (Server class,
+`onConnect`/`onMessage`/`onClose`, `room.broadcast`, connection state,
+`partykit dev`/`deploy`).
 
-Key facts about THIS project's Rivet usage:
+Key facts about THIS project's realtime layer:
 
-- The room actor is `festivusRoom` in `server/rivet/room.ts`; the registry
-  is `server/rivet/registry.ts`.
-- Local dev: `pnpm dev:rivet` runs `registry.start()` with the embedded
-  engine on port 6420. No cloud account needed.
-- Production: **serverless mode** — `app/api/rivet/[[...slug]]/route.ts`
-  mounts `registry.handler()`, and the Rivet Cloud dashboard points its
-  serverless runner at `https://<app>.vercel.app/api/rivet`. Browsers
-  connect to Rivet's gateway via `NEXT_PUBLIC_RIVET_ENDPOINT` (a
-  `https://<namespace>:<pk_token>@api.rivet.dev` URL); the runner
-  authenticates with `RIVET_ENDPOINT` (`sk_` URL, server-side only).
-- rivetkit's core runtime is WASM: `next.config.mjs` must keep
-  `serverExternalPackages` + `outputFileTracingIncludes` for
-  `@rivetkit/rivetkit-wasm`, or the Vercel function 500s.
+- **All game logic is transport-agnostic** in `server/game/core.ts`
+  (`RoomCore`): the roster, per-round anonymity tokens, the event sim, the
+  fixed tick, and every action. It talks to the world through a small
+  `Transport` (broadcast + sendTo), so it can be hosted anywhere and tested
+  without a network.
+- `party/server.ts` is a **thin PartyKit adapter** over `RoomCore`: it owns
+  the WebSocket lifecycle and a ~25 Hz `setInterval` tick (started on first
+  connect, stopped when empty), and translates messages. `partykit.json`
+  points `main` at it.
+- Wire protocol is JSON strings: `{t:"snapshot"|"you", data}` server→client;
+  `{t:"rpc",id,method,args}` (awaits `{t:"rpc:res",id,result}`) and
+  `{t:"msg",method,args}` (fire-and-forget) client→server. The RPC shim lives
+  in `lib/realtime/useRoom.ts`.
+- Local dev: `pnpm dev:party` runs `partykit dev` on port 1999. Deploy:
+  `npx partykit login` then `npx partykit deploy` (or `pnpm deploy:party`) →
+  `festivus-game.<user>.partykit.dev`. Browsers reach it via
+  `NEXT_PUBLIC_PARTYKIT_HOST` (hostname only). The room reaches the Next.js
+  API via `APP_BASE_URL` + `INTERNAL_API_SECRET` (set with `partykit env`).
+- `pnpm sim` drives `RoomCore` directly through an in-memory transport — no
+  server, no WebSockets, no DB — so it's the fast, authoritative check.
 
 ## House rules
 
