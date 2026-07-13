@@ -44,6 +44,15 @@ const RUNNER_NAME = "default";
  */
 const REQUEST_LIFESPAN_S = 280;
 
+/**
+ * Grace period (seconds) for a runner to drain on shutdown. Rivet REQUIRES
+ * drain_grace_period < request_lifespan (else the engine rejects the config:
+ * "drain_grace_period must be less than request_lifespan"), and its default
+ * is 1800 s — larger than our lifespan — so we must set it explicitly. Kept
+ * small so the drain finishes inside the 300 s function budget.
+ */
+const DRAIN_GRACE_PERIOD_S = 20;
+
 export interface ProvisionResult {
   outcome: "created" | "exists" | "skipped";
   detail: string;
@@ -256,6 +265,7 @@ async function putConfig(
     url: runnerUrl,
     headers: { "x-rivet-token": runnerToken },
     request_lifespan: REQUEST_LIFESPAN_S,
+    drain_grace_period: DRAIN_GRACE_PERIOD_S,
     metadata_poll_interval: 1000,
     max_runners: 100_000,
     min_runners: 0,
