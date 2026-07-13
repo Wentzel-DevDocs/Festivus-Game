@@ -202,17 +202,25 @@ connect to Rivet's gateway with the publishable token, and Rivet holds the
 WebSockets (which Vercel functions can't).
 
 1. In the [Rivet Cloud](https://rivet.dev) dashboard, create a project +
-   namespace and choose **Serverless**; set the runner URL to
-   `https://<your-app>.vercel.app/api/rivet`.
+   namespace.
 2. Copy the two connection URLs the dashboard gives you and set on Vercel:
    - `RIVET_ENDPOINT` = the **secret** (`sk_…`) URL — server-side env,
      never `NEXT_PUBLIC_`.
    - `NEXT_PUBLIC_RIVET_ENDPOINT` = the **publishable** (`pk_…`) URL —
      this ships to browsers by design. Don't also set
      `NEXT_PUBLIC_RIVET_TOKEN`; the token is already inside the URL.
-3. Redeploy. The dashboard's health check probes
-   `/api/rivet/health` and should go green; you can verify yourself:
-   `curl https://<your-app>.vercel.app/api/rivet/health`.
+3. Redeploy, then open the game (or
+   `curl https://<your-app>.vercel.app/api/rivet/health`). On first contact
+   the route **registers itself** with Rivet as the namespace's `default`
+   serverless runner across every datacenter
+   (`server/rivet/provision.ts`) — there is no runner config to
+   hand-create in the dashboard, and nothing that can be misnamed. The
+   game page pokes this endpoint before every connect, so even a brand-new
+   namespace heals itself.
+
+Only the **production** deployment self-registers (a poked preview deploy
+must not repoint the live pool). Hosting somewhere without Vercel's env,
+or on a custom domain? Set `RIVET_RUNNER_URL` to your `/api/rivet` URL.
 
 Note: one function invocation hosts the room for up to `maxDuration`
 (300 s in the route file — the Vercel Hobby ceiling; raise it to 800 on

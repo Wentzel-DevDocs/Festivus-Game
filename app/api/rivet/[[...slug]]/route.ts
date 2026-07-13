@@ -2,12 +2,13 @@
  * /api/rivet/* — the RivetKit SERVERLESS runner endpoint.
  *
  * This is the alternative to running `pnpm dev:rivet` on an always-on host:
- * in the Rivet Cloud dashboard you register this URL (e.g.
- * https://your-app.vercel.app/api/rivet) as a serverless runner, and the
- * Rivet Engine CALLS INTO this route to execute the room actor inside your
- * serverless functions. Browsers still connect to Rivet's gateway
- * (NEXT_PUBLIC_RIVET_ENDPOINT with the pk_ token) — the engine terminates
- * their WebSockets and drives the actor through here over HTTP.
+ * the route registers ITSELF with Rivet as the namespace's "default"
+ * serverless runner (see server/rivet/provision.ts — no dashboard entry to
+ * hand-create), and the Rivet Engine CALLS INTO this route to execute the
+ * room actor inside your serverless functions. Browsers still connect to
+ * Rivet's gateway (NEXT_PUBLIC_RIVET_ENDPOINT with the pk_ token) — the
+ * engine terminates their WebSockets and drives the actor through here
+ * over HTTP.
  *
  * Required env on this deployment (server-side, NOT NEXT_PUBLIC):
  *   RIVET_ENDPOINT = https://<namespace>:<sk_token>@api.rivet.dev
@@ -19,6 +20,7 @@
  */
 
 import { registry } from "@/server/rivet/registry";
+import { ensureRunnerConfig } from "@/server/rivet/provision";
 
 // The engine's requests must never be served from any cache, and the actor
 // needs the Node.js runtime (not edge).
@@ -32,6 +34,14 @@ export const maxDuration = 300;
 
 const handler = async (request: Request) => {
   try {
+    // Self-register this deployment as the namespace's "default" serverless
+    // runner (see provision.ts) — cached per process, so it costs one Rivet
+    // API round-trip on the first request only. Skipped for the engine's
+    // own calls: the engine reaching us proves a config already exists, and
+    // a transient provisioning failure must never 500 live actor traffic.
+    if (!(request.headers.get("user-agent") ?? "").startsWith("RivetEngine/")) {
+      await ensureRunnerConfig();
+    }
     return await registry.handler(request);
   } catch (err) {
     // Surface the real failure in the response body: platform runtime logs

@@ -92,48 +92,73 @@ export function useRoom(join: JoinParams | null): RoomApi {
   useEffect(() => {
     if (!join || !joinKey) return;
 
-    const client = createClient<Registry>({
-      endpoint: process.env.NEXT_PUBLIC_RIVET_ENDPOINT || "http://127.0.0.1:6420",
-      token: process.env.NEXT_PUBLIC_RIVET_TOKEN || undefined,
+    let cancelled = false;
+    let cleanup: (() => void) | null = null;
+
+    // Poke our own serverless runner route BEFORE dialing Rivet's gateway.
+    // The route self-registers this deployment as the namespace's runner
+    // config on first contact (see server/rivet/provision.ts); connecting
+    // to a namespace that has no runner config fails with
+    // actor.no_runner_config_configured, which the rivetkit client treats
+    // as fatal (no retry). Bounded so a cold serverless start can only
+    // delay joining, never block it.
+    const poke = Promise.race([
+      fetch("/api/rivet/health", { cache: "no-store" }).catch(() => null),
+      new Promise((resolve) => setTimeout(resolve, 5000)),
+    ]);
+
+    void poke.then(() => {
+      if (cancelled) return;
+
+      const client = createClient<Registry>({
+        endpoint: process.env.NEXT_PUBLIC_RIVET_ENDPOINT || "http://127.0.0.1:6420",
+        token: process.env.NEXT_PUBLIC_RIVET_TOKEN || undefined,
+      });
+
+      const conn = client.festivusRoom.getOrCreate([GAME_CONFIG.ROOM_ID]).connect(join);
+      connRef.current = conn as unknown as RoomConn;
+
+      const offSnapshot = conn.on(EVT_SNAPSHOT, (snap: Snapshot) => {
+        const buf = bufferRef.current;
+        buf.previous = buf.latest;
+        buf.previousAt = buf.latestAt;
+        buf.latest = snap;
+        buf.latestAt = performance.now();
+
+        // Fx are one-snapshot transients: fan out every one, immediately.
+        for (const fx of snap.fx) for (const cb of fxListeners.current) cb(fx);
+
+        // DOM state only needs ~10 Hz.
+        const now = performance.now();
+        if (now - lastDomUpdate.current >= DOM_UPDATE_MS) {
+          lastDomUpdate.current = now;
+          setSnapshot(snap);
+        }
+      });
+
+      const offYou = conn.on(EVT_YOU, (msg: YouMessage) => setYou(msg));
+      const offOpen = conn.onOpen(() => {
+        setStatus("connected");
+        // Snapshot + "you" both arrive push-style, but fetch "you" once in
+        // case this is a reconnect that missed the onConnect send.
+        void (conn as { hello(): Promise<YouMessage> }).hello().then(setYou).catch(() => {});
+      });
+      const offClose = conn.onClose(() => setStatus("disconnected"));
+
+      cleanup = () => {
+        offSnapshot();
+        offYou();
+        offOpen();
+        offClose();
+        void conn.dispose();
+        connRef.current = null;
+      };
     });
-
-    const conn = client.festivusRoom.getOrCreate([GAME_CONFIG.ROOM_ID]).connect(join);
-    connRef.current = conn as unknown as RoomConn;
-
-    const offSnapshot = conn.on(EVT_SNAPSHOT, (snap: Snapshot) => {
-      const buf = bufferRef.current;
-      buf.previous = buf.latest;
-      buf.previousAt = buf.latestAt;
-      buf.latest = snap;
-      buf.latestAt = performance.now();
-
-      // Fx are one-snapshot transients: fan out every one, immediately.
-      for (const fx of snap.fx) for (const cb of fxListeners.current) cb(fx);
-
-      // DOM state only needs ~10 Hz.
-      const now = performance.now();
-      if (now - lastDomUpdate.current >= DOM_UPDATE_MS) {
-        lastDomUpdate.current = now;
-        setSnapshot(snap);
-      }
-    });
-
-    const offYou = conn.on(EVT_YOU, (msg: YouMessage) => setYou(msg));
-    const offOpen = conn.onOpen(() => {
-      setStatus("connected");
-      // Snapshot + "you" both arrive push-style, but fetch "you" once in
-      // case this is a reconnect that missed the onConnect send.
-      void (conn as { hello(): Promise<YouMessage> }).hello().then(setYou).catch(() => {});
-    });
-    const offClose = conn.onClose(() => setStatus("disconnected"));
 
     return () => {
-      offSnapshot();
-      offYou();
-      offOpen();
-      offClose();
-      void conn.dispose();
-      connRef.current = null;
+      cancelled = true;
+      cleanup?.();
+      cleanup = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joinKey]);
