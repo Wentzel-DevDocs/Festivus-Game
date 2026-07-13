@@ -5,6 +5,10 @@ const nextConfig = {
   images: {
     remotePatterns: [{ protocol: "https", hostname: "**" }],
   },
+  // rivetkit ships native binaries + WASM; it must be required from
+  // node_modules at runtime, not bundled (used by /api/rivet, the
+  // serverless runner route).
+  serverExternalPackages: ["rivetkit"],
 };
 
 export default nextConfig;
