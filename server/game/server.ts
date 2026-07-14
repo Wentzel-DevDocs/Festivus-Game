@@ -19,6 +19,11 @@
  */
 
 import { Server } from "socket.io";
+import {
+  ACADEMY_COHORT_EVENTS,
+  type AcademyCohortJoinArgs,
+} from "../../lib/academy/cohortProtocol";
+import { AcademyCohortManager } from "../academy/cohorts";
 import { RoomCore, sanitizeJoin, TICK_MS, type Transport } from "./core";
 
 // Local-dev convenience: load .env.local if the (dev-only) dotenv package is
@@ -41,10 +46,16 @@ const io = new Server(PORT, {
 
 // One transport, reused across room resets. socket.id doubles as a room the
 // socket auto-joins, so `io.to(id)` targets exactly one connection.
+const FESTIVUS_CHANNEL = "festivus:main";
+const academyChannel = (roomCode: string) => `academy:${roomCode}`;
+const ACADEMY_RECONNECT_GRACE_MS = 20_000;
+
 const transport: Transport = {
-  broadcast: (event, data) => io.emit(event, data),
+  broadcast: (event, data) => io.to(FESTIVUS_CHANNEL).emit(event, data),
   sendTo: (id, event, data) => io.to(id).emit(event, data),
 };
+
+const academyCohorts = new AcademyCohortManager();
 
 const env = {
   appBaseUrl: process.env.APP_BASE_URL || "",
@@ -66,6 +77,59 @@ function str(v: unknown): string | undefined {
 }
 
 io.on("connection", (socket) => {
+  if (socket.handshake.auth?.surface === "academy") {
+    socket.on(
+      ACADEMY_COHORT_EVENTS.join,
+      (args: AcademyCohortJoinArgs, ack?: (result: unknown) => void) => {
+        const previousRoom = academyCohorts.getRoomCodeForConnection(socket.id);
+        const result = academyCohorts.join(socket.id, args);
+        if (result.ok && result.snapshot) {
+          if (previousRoom && previousRoom !== result.snapshot.roomCode) {
+            void socket.leave(academyChannel(previousRoom));
+          }
+          void socket.join(academyChannel(result.snapshot.roomCode));
+          io.to(academyChannel(result.snapshot.roomCode)).emit(
+            ACADEMY_COHORT_EVENTS.snapshot,
+            result.snapshot,
+          );
+        }
+        if (typeof ack === "function") ack(result);
+      },
+    );
+
+    socket.on(
+      ACADEMY_COHORT_EVENTS.validate,
+      (args: { missionId?: unknown; code?: unknown }, ack?: (result: unknown) => void) => {
+        const result = academyCohorts.validateMission(socket.id, args?.missionId, args?.code);
+        if (result.ok && result.snapshot) {
+          io.to(academyChannel(result.snapshot.roomCode)).emit(
+            ACADEMY_COHORT_EVENTS.snapshot,
+            result.snapshot,
+          );
+        }
+        if (typeof ack === "function") ack(result);
+      },
+    );
+
+    socket.on("disconnect", () => {
+      const result = academyCohorts.disconnect(socket.id);
+      if (result.roomCode && result.snapshot) {
+        io.to(academyChannel(result.roomCode)).emit(ACADEMY_COHORT_EVENTS.snapshot, result.snapshot);
+      }
+      if (result.roomCode && result.learnerKey) {
+        const { roomCode, learnerKey } = result;
+        setTimeout(() => {
+          const expired = academyCohorts.expireDisconnected(roomCode, learnerKey);
+          if (expired.snapshot) {
+            io.to(academyChannel(roomCode)).emit(ACADEMY_COHORT_EVENTS.snapshot, expired.snapshot);
+          }
+        }, ACADEMY_RECONNECT_GRACE_MS);
+      }
+    });
+    return;
+  }
+
+  void socket.join(FESTIVUS_CHANNEL);
   const q = socket.handshake.query;
   core.connect(socket.id, sanitizeJoin({ role: str(q.role), name: str(q.name), stickyId: str(q.stickyId) }));
 

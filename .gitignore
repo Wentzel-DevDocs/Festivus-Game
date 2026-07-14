@@ -1,17 +1,24 @@
-# dependencies
+# Node / Next.js
 node_modules/
-
-# next.js build output
 .next/
 out/
-
-
-# env files — never commit secrets. Copy .env.example instead.
 .env
-.env.local
-.env*.local
+.env.*
+!.env.example
 
-# misc
+# Logs and local tooling
+*.log
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+
+# Unreal generated output
+unreal/**/.vs/
+unreal/**/Binaries/
+unreal/**/Build/
+unreal/**/DerivedDataCache/
+unreal/**/Intermediate/
+unreal/**/Saved/
+unreal/**/*.sln
+unreal/**/*.xcworkspace/
+unreal/**/*.xcodeproj/
