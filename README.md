@@ -260,7 +260,9 @@ Everything auto-advances; the host (the first boss screen) can skip any phase.
    Justin is **BELOVED**, **GREASED**, or the office is **DIVIDED**. The top
    masher is crowned champion and their win persists to Neon. The **Head of
    Household** on the poster is the *all-time wins leader* — win enough
-   matches and the person everyone gangs up on becomes you.
+   matches and the person everyone gangs up on becomes you. Results remain
+   visible until the host or any player deliberately starts a fresh match, so
+   a forgotten display tab cannot strand the next group on old results.
 
 Across the full match, a persistent real-time cinematic director bridges the
 phase and event changes with title cards, letterboxing, camera pulses, moving

@@ -32,6 +32,7 @@ export interface JoinParams {
  *   tap(sideIndex)              one help/hinder mash (solo events)
  *   tap()                       one assigned-team mash (tug-of-war)
  *   hostStart()                 start the match (host only)
+ *   startNextMatch()            player restarts a completed splash only
  *   hostSkip()                  skip the current phase (host only)
  *   hostHideGrievance(id)       remove a grievance from the feed (host only)
  *   submitGrievance(text)       blind-submit a gripe

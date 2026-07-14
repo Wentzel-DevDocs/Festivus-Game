@@ -654,6 +654,8 @@ export class RoomCore {
           return this.submitGrievance(String(arg ?? ""));
         case "hostStart":
           return this.hostStart();
+        case "startNextMatch":
+          return this.startNextMatch();
         case "hostSkip":
           return this.hostSkip();
         case "hostHideGrievance":
@@ -762,12 +764,31 @@ export class RoomCore {
     if (hostConnId(c) !== c.conn!.id) return { ok: false };
     const phase = v.session.phase;
     if (phase !== "lobby" && phase !== "splash") return { ok: false };
+    return this.beginMatch(phase === "lobby");
+  }
+
+  /**
+   * A completed singleton room may outlive its crowd while an old display
+   * remains connected. Let any real player explicitly begin the next match
+   * from splash so a stale host cannot strand a new group on old results.
+   */
+  private startNextMatch(): { ok: boolean } {
+    const c = this.c;
+    const entry = c.vars.roster.get(c.conn!.id);
+    if (entry?.role !== "player" || c.vars.session.phase !== "splash") {
+      return { ok: false };
+    }
+    return this.beginMatch(false);
+  }
+
+  private beginMatch(keepGrievances: boolean): { ok: boolean } {
+    const c = this.c;
     // Pick up any level_config retuning done since the room woke.
     c.waitUntil(loadEventParams(c));
     const now = Date.now();
-    resetMatch(c, now, phase === "lobby");
+    resetMatch(c, now, keepGrievances);
     sendYouToAll(c);
-    startMatch(v.session, now, timing(c));
+    startMatch(c.vars.session, now, timing(c));
     return { ok: true };
   }
 
