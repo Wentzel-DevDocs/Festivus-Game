@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AcademyMission, AcademyRoom } from "@/lib/academy/types";
-import { useAcademyCohort } from "@/lib/academy/useAcademyCohort";
+import {
+  ACADEMY_LEARNER_KEY_STORAGE,
+  getAcademyLearnerKey,
+  useAcademyCohort,
+} from "@/lib/academy/useAcademyCohort";
 import {
   runAcademyMissionChecks,
   type AcademyCheckResult,
@@ -28,35 +32,101 @@ interface MentorReply {
   model?: string;
 }
 
-function progressKey(roomSlug: string) {
-  return `festivus-academy:${roomSlug}:progress:v1`;
+interface MentorRequest {
+  controller: AbortController;
+  missionId: string;
+  code: string;
+  promptDraft: string;
 }
 
-function readProgress(roomSlug: string): StoredProgress {
+const ACADEMY_PROGRESS_PREFIX = "festivus-academy:";
+const volatileProgress = new Map<string, StoredProgress>();
+
+function emptyProgress(): StoredProgress {
+  return { completed: [], drafts: {}, prompts: {} };
+}
+
+function progressKey(roomSlug: string, learnerKey: string) {
+  return `${ACADEMY_PROGRESS_PREFIX}${roomSlug}:${learnerKey}:progress:v2`;
+}
+
+function legacyProgressKey(roomSlug: string) {
+  return `${ACADEMY_PROGRESS_PREFIX}${roomSlug}:progress:v1`;
+}
+
+function parseProgress(value: string | null): StoredProgress {
   try {
-    const value = window.localStorage.getItem(progressKey(roomSlug));
-    if (!value) return { completed: [], drafts: {}, prompts: {} };
+    if (!value) return emptyProgress();
     const parsed = JSON.parse(value) as Partial<StoredProgress>;
+    const stringRecord = (candidate: unknown) =>
+      candidate && typeof candidate === "object" && !Array.isArray(candidate)
+        ? Object.fromEntries(
+            Object.entries(candidate).filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string",
+            ),
+          )
+        : {};
     return {
       completed: Array.isArray(parsed.completed)
         ? parsed.completed.filter((id): id is string => typeof id === "string")
         : [],
-      drafts:
-        parsed.drafts && typeof parsed.drafts === "object" ? parsed.drafts : {},
-      prompts:
-        parsed.prompts && typeof parsed.prompts === "object" ? parsed.prompts : {},
+      drafts: stringRecord(parsed.drafts),
+      prompts: stringRecord(parsed.prompts),
     };
   } catch {
-    return { completed: [], drafts: {}, prompts: {} };
+    return emptyProgress();
   }
 }
 
-function writeProgress(roomSlug: string, progress: StoredProgress) {
+function readProgress(roomSlug: string, learnerKey: string): StoredProgress {
+  const key = progressKey(roomSlug, learnerKey);
   try {
-    window.localStorage.setItem(progressKey(roomSlug), JSON.stringify(progress));
+    const scoped = window.localStorage.getItem(key);
+    if (scoped) return parseProgress(scoped);
+
+    // Preserve the current learner's pre-v2 work once, then remove the
+    // room-wide key so a later learner can never inherit it.
+    const legacyKey = legacyProgressKey(roomSlug);
+    const legacy = window.localStorage.getItem(legacyKey);
+    if (!legacy) return volatileProgress.get(key) ?? emptyProgress();
+    const migrated = parseProgress(legacy);
+    window.localStorage.setItem(key, JSON.stringify(migrated));
+    window.localStorage.removeItem(legacyKey);
+    return migrated;
   } catch {
-    // Sandboxed web views may deny localStorage. The mission still works for
-    // the current session; persistence is a convenience, not a gate.
+    return volatileProgress.get(key) ?? emptyProgress();
+  }
+}
+
+function updateProgress(
+  roomSlug: string,
+  learnerKey: string,
+  update: (latest: StoredProgress) => StoredProgress,
+) {
+  const latest = readProgress(roomSlug, learnerKey);
+  const next = update(latest);
+  const key = progressKey(roomSlug, learnerKey);
+  volatileProgress.set(key, next);
+  try {
+    window.localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // Sandboxed web views may deny localStorage. React state still preserves
+    // the work for the life of the current room visit.
+  }
+  return next;
+}
+
+function clearAllAcademyProgress() {
+  volatileProgress.clear();
+  try {
+    const keys = Array.from({ length: window.localStorage.length }, (_, index) =>
+      window.localStorage.key(index),
+    ).filter((key): key is string => Boolean(key?.startsWith(ACADEMY_PROGRESS_PREFIX)));
+    for (const key of keys) {
+      if (key.includes(":progress:v")) window.localStorage.removeItem(key);
+    }
+  } catch {
+    // There is nothing durable to clear when storage is unavailable.
   }
 }
 
@@ -84,6 +154,8 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
   const [cohortCode, setCohortCode] = useState("");
   const [cohortError, setCohortError] = useState("");
   const [cohortPublishing, setCohortPublishing] = useState(false);
+  const [learnerKey, setLearnerKey] = useState("");
+  const mentorRequestRef = useRef<MentorRequest | null>(null);
 
   const activeMission = room.missions[activeIndex];
   const completedSet = useMemo(() => new Set(completed), [completed]);
@@ -99,20 +171,105 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
   const totalXp = room.missions.reduce((total, mission) => total + mission.xp, 0);
 
   useEffect(() => {
-    const saved = readProgress(room.slug);
+    mentorRequestRef.current?.controller.abort();
+    mentorRequestRef.current = null;
+    const currentLearnerKey = getAcademyLearnerKey();
+    const saved = readProgress(room.slug, currentLearnerKey);
     const savedSet = new Set(saved.completed);
     const nextIndex = room.missions.findIndex((mission) => !savedSet.has(mission.id));
     const initialIndex = nextIndex === -1 ? Math.max(0, room.missions.length - 1) : nextIndex;
     const mission = room.missions[initialIndex];
 
+    setLearnerKey(currentLearnerKey);
     setCompleted(saved.completed);
     setDrafts(saved.drafts);
     setPromptDrafts(saved.prompts);
     setActiveIndex(initialIndex);
     setCode(saved.drafts[mission.id] ?? mission.starterCode);
     setPromptDraft(saved.prompts[mission.id] ?? mission.aiWorkflow.promptTemplate);
+    setResults([]);
+    setHintCount(0);
+    setMentorLoading(false);
+    setMentorReply(null);
+    setMentorError("");
     setHydrated(true);
   }, [room]);
+
+  useEffect(() => {
+    if (!learnerKey) return;
+    const key = progressKey(room.slug, learnerKey);
+
+    const syncProgress = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage) return;
+
+      if (event.key === ACADEMY_LEARNER_KEY_STORAGE) {
+        const nextLearnerKey = getAcademyLearnerKey();
+        if (nextLearnerKey === learnerKey) return;
+
+        // A sibling tab started a new learner. Release every piece of the old
+        // learner's visible work immediately; useAcademyCohort independently
+        // detaches its old live cohort connection on the same storage event.
+        try {
+          window.localStorage.removeItem(key);
+        } catch {
+          // Storage may become unavailable after the event was delivered.
+        }
+        volatileProgress.delete(key);
+        const saved = readProgress(room.slug, nextLearnerKey);
+        const savedSet = new Set(saved.completed);
+        const nextIndex = room.missions.findIndex((mission) => !savedSet.has(mission.id));
+        const initialIndex =
+          nextIndex === -1 ? Math.max(0, room.missions.length - 1) : nextIndex;
+        const mission = room.missions[initialIndex];
+
+        mentorRequestRef.current?.controller.abort();
+        mentorRequestRef.current = null;
+        setLearnerKey(nextLearnerKey);
+        setCompleted(saved.completed);
+        setDrafts(saved.drafts);
+        setPromptDrafts(saved.prompts);
+        setActiveIndex(initialIndex);
+        setCode(saved.drafts[mission.id] ?? mission.starterCode);
+        setPromptDraft(saved.prompts[mission.id] ?? mission.aiWorkflow.promptTemplate);
+        setResults([]);
+        setHintCount(0);
+        setMentorLoading(false);
+        setMentorReply(null);
+        setMentorError("");
+        setCohortError("");
+        setCohortCode("");
+        return;
+      }
+
+      if (event.key !== key) return;
+      const saved = parseProgress(event.newValue);
+      const mission = room.missions[activeIndex];
+      if (!mission) return;
+
+      setCompleted(saved.completed);
+      setDrafts(saved.drafts);
+      setPromptDrafts(saved.prompts);
+      setCode(saved.drafts[mission.id] ?? mission.starterCode);
+      setPromptDraft(saved.prompts[mission.id] ?? mission.aiWorkflow.promptTemplate);
+      setResults([]);
+      mentorRequestRef.current?.controller.abort();
+      mentorRequestRef.current = null;
+      setMentorLoading(false);
+      setMentorReply(null);
+      setMentorError("");
+    };
+
+    window.addEventListener("storage", syncProgress);
+    return () => window.removeEventListener("storage", syncProgress);
+  }, [activeIndex, learnerKey, room]);
+
+  useEffect(
+    () => () => {
+      mentorRequestRef.current?.controller.abort();
+      mentorRequestRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!hydrated) return;
@@ -193,9 +350,24 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
     return <p className="text-aluminum-300">This room has no missions yet.</p>;
   }
 
+  function cancelMentorRequest() {
+    mentorRequestRef.current?.controller.abort();
+    mentorRequestRef.current = null;
+    setMentorLoading(false);
+    setMentorReply(null);
+    setMentorError("");
+  }
+
+  function adoptPersistedProgress(next: StoredProgress) {
+    setCompleted(next.completed);
+    setDrafts(next.drafts);
+    setPromptDrafts(next.prompts);
+  }
+
   function selectMission(index: number) {
     if (index > maxUnlockedIndex) return;
     const mission = room.missions[index];
+    cancelMentorRequest();
     setActiveIndex(index);
     setCode(drafts[mission.id] ?? mission.starterCode);
     setPromptDraft(promptDrafts[mission.id] ?? mission.aiWorkflow.promptTemplate);
@@ -206,17 +378,26 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
   }
 
   function updateCode(nextCode: string) {
-    const nextDrafts = { ...drafts, [activeMission.id]: nextCode };
+    cancelMentorRequest();
+    setResults([]);
     setCode(nextCode);
-    setDrafts(nextDrafts);
-    writeProgress(room.slug, { completed, drafts: nextDrafts, prompts: promptDrafts });
+    if (!learnerKey) return;
+    const next = updateProgress(room.slug, learnerKey, (latest) => ({
+      ...latest,
+      drafts: { ...latest.drafts, [activeMission.id]: nextCode },
+    }));
+    adoptPersistedProgress(next);
   }
 
   function updatePromptDraft(nextPrompt: string) {
-    const nextPrompts = { ...promptDrafts, [activeMission.id]: nextPrompt };
+    cancelMentorRequest();
     setPromptDraft(nextPrompt);
-    setPromptDrafts(nextPrompts);
-    writeProgress(room.slug, { completed, drafts, prompts: nextPrompts });
+    if (!learnerKey) return;
+    const next = updateProgress(room.slug, learnerKey, (latest) => ({
+      ...latest,
+      prompts: { ...latest.prompts, [activeMission.id]: nextPrompt },
+    }));
+    adoptPersistedProgress(next);
   }
 
   function generateCohortCode() {
@@ -240,6 +421,14 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
   }
 
   async function askMentor() {
+    mentorRequestRef.current?.controller.abort();
+    const request: MentorRequest = {
+      controller: new AbortController(),
+      missionId: activeMission.id,
+      code,
+      promptDraft,
+    };
+    mentorRequestRef.current = request;
     setMentorLoading(true);
     setMentorError("");
     setMentorReply(null);
@@ -253,16 +442,22 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
           promptDraft,
           code,
         }),
+        signal: request.controller.signal,
       });
       const payload = (await response.json()) as MentorReply | { error?: string };
       if (!response.ok || !("summary" in payload)) {
         throw new Error("error" in payload && payload.error ? payload.error : "Mentor request failed");
       }
+      if (mentorRequestRef.current !== request) return;
       setMentorReply(payload);
     } catch (error) {
+      if (mentorRequestRef.current !== request || request.controller.signal.aborted) return;
       setMentorError(error instanceof Error ? error.message : "Mentor request failed");
     } finally {
-      setMentorLoading(false);
+      if (mentorRequestRef.current === request) {
+        mentorRequestRef.current = null;
+        setMentorLoading(false);
+      }
     }
   }
 
@@ -284,26 +479,54 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
       } else if (cohort.joined) {
         setCohortError("Cohort server is offline. This completion is saved on this device only.");
       }
-      const nextCompleted = completedSet.has(activeMission.id)
-        ? completed
-        : [...completed, activeMission.id];
-      setCompleted(nextCompleted);
-      writeProgress(room.slug, {
-        completed: nextCompleted,
-        drafts,
-        prompts: promptDrafts,
-      });
+      if (!learnerKey) return;
+      const next = updateProgress(room.slug, learnerKey, (latest) => ({
+        ...latest,
+        completed: latest.completed.includes(activeMission.id)
+          ? latest.completed
+          : [...latest.completed, activeMission.id],
+      }));
+      adoptPersistedProgress(next);
     }
   }
 
   function resetMission() {
-    const nextDrafts = { ...drafts };
-    delete nextDrafts[activeMission.id];
-    setDrafts(nextDrafts);
+    cancelMentorRequest();
     setCode(activeMission.starterCode);
     setResults([]);
     setHintCount(0);
-    writeProgress(room.slug, { completed, drafts: nextDrafts, prompts: promptDrafts });
+    if (!learnerKey) return;
+    const next = updateProgress(room.slug, learnerKey, (latest) => {
+      const nextDrafts = { ...latest.drafts };
+      delete nextDrafts[activeMission.id];
+      return { ...latest, drafts: nextDrafts };
+    });
+    adoptPersistedProgress(next);
+  }
+
+  function startNewLearner() {
+    if (
+      !window.confirm(
+        "Start a new learner? This clears every locally saved Academy draft, AI brief, and completion on this device.",
+      )
+    ) {
+      return;
+    }
+
+    cancelMentorRequest();
+    clearAllAcademyProgress();
+    const nextLearnerKey = cohort.startNewLearner();
+    setLearnerKey(nextLearnerKey);
+    setActiveIndex(0);
+    setCompleted([]);
+    setDrafts({});
+    setPromptDrafts({});
+    setCode(room.missions[0]?.starterCode ?? "");
+    setPromptDraft(room.missions[0]?.aiWorkflow.promptTemplate ?? "");
+    setResults([]);
+    setHintCount(0);
+    setCohortError("");
+    setCohortCode("");
   }
 
   const passed =
@@ -340,6 +563,14 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
               style={{ width: `${(completed.length / room.missions.length) * 100}%` }}
             />
           </div>
+          <button
+            type="button"
+            onClick={startNewLearner}
+            disabled={cohortPublishing}
+            className="mt-4 min-h-11 w-full rounded-md border border-aluminum-600 px-3 font-mono text-[0.65rem] uppercase tracking-wider text-aluminum-400 hover:border-grease hover:text-grease disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Start new learner
+          </button>
         </div>
 
         <nav className="border-t border-aluminum-700/70 p-2" aria-label="Room missions">

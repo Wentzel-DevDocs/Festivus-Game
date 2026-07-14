@@ -14,8 +14,9 @@
  *
  * Transport: value-returning actions (submitGrievance, switchToPlayer,
  * hello) use Socket.IO acks (`emitWithAck`); taps and host
- * controls are fire-and-forget emits. Socket.IO auto-reconnects, so a dropped
- * connection heals itself.
+ * controls are connected-only, volatile fire-and-forget emits, so Socket.IO
+ * drops offline input instead of replaying it into a later phase.
+ * Socket.IO auto-reconnects, so a dropped connection heals itself.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -45,12 +46,16 @@ export interface RoomApi {
   bufferRef: React.RefObject<SnapshotBuffer>;
   you: YouMessage | null;
   status: RoomStatus;
+  /** Latest transport failure, cleared as soon as a connection succeeds. */
+  error: string | null;
+  /** Ask Socket.IO to reconnect immediately (automatic retries remain enabled). */
+  reconnect(): void;
   onFx(cb: (fx: FxEvent) => void): () => void;
   /** Side is required for solo events and omitted for assigned-team tug. */
   tap(side?: 0 | 1): void;
   submitGrievance(text: string): Promise<{ ok: boolean; reason?: string }>;
   hostStart(): void;
-  /** Player-safe restart accepted only from a completed splash screen. */
+  /** Player-safe start accepted from an idle lobby or completed splash. */
   startNextMatch(): void;
   hostSkip(): void;
   hostHideGrievance(id: string): void;
@@ -66,21 +71,27 @@ const GAME_SERVER_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://127.0
 /** A client bound to one socket: action RPC + fire-and-forget. */
 interface RoomConn {
   rpc<T>(method: string, args?: unknown): Promise<T | null>;
-  fire(method: string, args?: unknown): void;
+  fire(method: string, args?: unknown, volatile?: boolean): void;
+}
+
+function emptySnapshotBuffer(): SnapshotBuffer {
+  return {
+    latest: null,
+    previous: null,
+    latestAt: 0,
+    previousAt: 0,
+  };
 }
 
 export function useRoom(join: JoinParams | null): RoomApi {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [you, setYou] = useState<YouMessage | null>(null);
   const [status, setStatus] = useState<RoomStatus>("connecting");
+  const [error, setError] = useState<string | null>(null);
 
-  const bufferRef = useRef<SnapshotBuffer>({
-    latest: null,
-    previous: null,
-    latestAt: 0,
-    previousAt: 0,
-  });
+  const bufferRef = useRef<SnapshotBuffer>(emptySnapshotBuffer());
   const connRef = useRef<RoomConn | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const fxListeners = useRef<Set<(fx: FxEvent) => void>>(new Set());
   const lastDomUpdate = useRef(0);
 
@@ -90,22 +101,40 @@ export function useRoom(join: JoinParams | null): RoomApi {
   useEffect(() => {
     if (!join || !joinKey) return;
 
+    // A changed identity or reconnect must never render or authorize against
+    // the previous connection's role and phase.
+    setSnapshot(null);
+    setYou(null);
+    setStatus("connecting");
+    setError(null);
+    bufferRef.current = emptySnapshotBuffer();
+    lastDomUpdate.current = 0;
+
     const socket: Socket = io(GAME_SERVER_URL, {
       transports: ["websocket"],
       // JoinParams travel as handshake query — re-sent on every reconnect.
       query: { role: join.role, name: join.name, stickyId: join.stickyId },
     });
+    socketRef.current = socket;
 
-    const rpc = <T,>(method: string, args?: unknown): Promise<T | null> =>
-      socket
+    const rpc = <T,>(method: string, args?: unknown): Promise<T | null> => {
+      if (!socket.connected) return Promise.resolve(null);
+      return socket
         .timeout(5000)
         .emitWithAck("rpc", { method, args })
         .then((r) => r as T)
         .catch(() => null);
-    const fire = (method: string, args?: unknown) => {
-      socket.emit("msg", { method, args });
     };
-    connRef.current = { rpc, fire };
+    const fire = (method: string, args?: unknown, volatile = false) => {
+      // Ordinary Socket.IO emits are buffered while offline and replayed on
+      // reconnect. Game input must describe what the player is doing NOW, so
+      // drop it instead of letting stale taps or controls cross phase bounds.
+      if (!socket.connected) return;
+      if (volatile) socket.volatile.emit("msg", { method, args });
+      else socket.emit("msg", { method, args });
+    };
+    const roomConn: RoomConn = { rpc, fire };
+    connRef.current = roomConn;
 
     socket.on(EVT_SNAPSHOT, (snap: Snapshot) => {
       const buf = bufferRef.current;
@@ -127,16 +156,33 @@ export function useRoom(join: JoinParams | null): RoomApi {
 
     socket.on("connect", () => {
       setStatus("connected");
+      setError(null);
       // Snapshot + "you" arrive push-style, but fetch "you" once in case this
       // is a reconnect that missed the onConnect send.
       void rpc<YouMessage>("hello").then((y) => y && setYou(y));
     });
-    socket.on("disconnect", () => setStatus("disconnected"));
+    socket.on("disconnect", (reason) => {
+      setStatus("disconnected");
+      if (reason === "io server disconnect") {
+        setError("The room server ended this connection. Retry to rejoin.");
+      }
+      setSnapshot(null);
+      setYou(null);
+      bufferRef.current = emptySnapshotBuffer();
+    });
+    socket.on("connect_error", (cause: Error) => {
+      setStatus("disconnected");
+      setError(cause.message || "The room server could not be reached.");
+      setSnapshot(null);
+      setYou(null);
+      bufferRef.current = emptySnapshotBuffer();
+    });
     socket.io.on("reconnect_attempt", () => setStatus("connecting"));
 
     return () => {
       socket.close();
-      connRef.current = null;
+      if (socketRef.current === socket) socketRef.current = null;
+      if (connRef.current === roomConn) connRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joinKey]);
@@ -148,12 +194,20 @@ export function useRoom(join: JoinParams | null): RoomApi {
       bufferRef,
       you,
       status,
+      error,
+      reconnect() {
+        const socket = socketRef.current;
+        if (!socket) return;
+        setError(null);
+        setStatus("connecting");
+        socket.connect();
+      },
       onFx(cb) {
         fxListeners.current.add(cb);
         return () => fxListeners.current.delete(cb);
       },
       tap(side) {
-        conn()?.fire("tap", side);
+        conn()?.fire("tap", side, true);
       },
       async submitGrievance(text) {
         const res = await (conn()?.rpc<{ ok: boolean; reason?: string }>("submitGrievance", text) ??
@@ -161,16 +215,16 @@ export function useRoom(join: JoinParams | null): RoomApi {
         return res ?? { ok: false, reason: "not connected" };
       },
       hostStart() {
-        conn()?.fire("hostStart");
+        conn()?.fire("hostStart", undefined, true);
       },
       startNextMatch() {
-        conn()?.fire("startNextMatch");
+        conn()?.fire("startNextMatch", undefined, true);
       },
       hostSkip() {
-        conn()?.fire("hostSkip");
+        conn()?.fire("hostSkip", undefined, true);
       },
       hostHideGrievance(id) {
-        conn()?.fire("hostHideGrievance", id);
+        conn()?.fire("hostHideGrievance", id, true);
       },
       async switchToPlayer(name) {
         const res = await (conn()?.rpc<{ ok: boolean }>("switchToPlayer", name ?? null) ??
@@ -178,7 +232,7 @@ export function useRoom(join: JoinParams | null): RoomApi {
         return res?.ok ?? false;
       },
     };
-  }, [snapshot, you, status]);
+  }, [error, snapshot, you, status]);
 }
 
 /** Milliseconds left in the current phase, from a snapshot. */

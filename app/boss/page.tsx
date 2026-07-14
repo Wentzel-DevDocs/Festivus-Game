@@ -313,7 +313,11 @@ export default function BossPage() {
                   {snapshot?.playerCount ?? 0} raider{(snapshot?.playerCount ?? 0) === 1 ? "" : "s"} connected
                 </span>
                 <span className="hud-chip hidden sm:inline-flex">
-                  {room.status === "connected" ? "Realtime uplink stable" : "Reconnecting uplink"}
+                  {room.status === "connected"
+                    ? "Realtime uplink stable"
+                    : room.error
+                      ? "Uplink offline"
+                      : "Reconnecting uplink"}
                 </span>
               </div>
             </div>
@@ -378,33 +382,52 @@ export default function BossPage() {
                 </p>
               </>
             ) : (
-              <div
-                className="broadcast-operator-status flex min-w-0 items-center gap-3"
-                role="status"
-              >
-                <span
-                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                    isSecondaryDisplay ? "bg-support" : "animate-pulse bg-grease"
-                  }`}
-                  aria-hidden="true"
-                />
-                <div className="min-w-0">
-                  <p className="eyebrow">
-                    {isSecondaryDisplay
-                      ? "Spectator mirror"
-                      : isPrimaryHost
-                        ? "Primary operator"
-                        : "Operator link pending"}
-                  </p>
-                  <p className="mt-1 text-xs text-aluminum-400">
-                    {isSecondaryDisplay
-                      ? "Primary host retains controls and room audio · this display stays synced and silent."
-                      : isPrimaryHost
-                        ? "Host role confirmed · controls arm when the room snapshot arrives."
-                        : "Waiting for the room to designate the primary host display."}
-                  </p>
+              <>
+                <div
+                  className="broadcast-operator-status flex min-w-0 flex-1 items-center gap-3"
+                  role={room.error ? "alert" : "status"}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                      room.error
+                        ? "bg-grievance"
+                        : isSecondaryDisplay
+                          ? "bg-support"
+                          : "animate-pulse bg-grease"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <p className="eyebrow">
+                      {room.error
+                        ? "Room uplink offline"
+                        : isSecondaryDisplay
+                          ? "Spectator mirror"
+                          : isPrimaryHost
+                            ? "Primary operator"
+                            : "Operator link pending"}
+                    </p>
+                    <p className="mt-1 text-xs text-aluminum-400">
+                      {room.error
+                        ? room.error
+                        : isSecondaryDisplay
+                          ? "Primary host retains controls and room audio · this display stays synced and silent."
+                          : isPrimaryHost
+                            ? "Host role confirmed · controls arm when the room snapshot arrives."
+                            : "Waiting for the room to designate the primary host display."}
+                    </p>
+                  </div>
                 </div>
-              </div>
+                {room.error && (
+                  <button
+                    type="button"
+                    onClick={() => room.reconnect()}
+                    className="min-h-11 shrink-0 rounded-md border border-support px-4 text-sm font-semibold text-support"
+                  >
+                    Retry uplink
+                  </button>
+                )}
+              </>
             )}
           </div>
         </section>
@@ -437,7 +460,21 @@ export default function BossPage() {
                 {snapshot?.bossCount ?? 0} broadcast
                 {(snapshot?.bossCount ?? 0) === 1 ? "" : "s"}
               </span>
-              <span className="text-support">Uplink open</span>
+              <span
+                className={
+                  room.status === "connected"
+                    ? "text-support"
+                    : room.error
+                      ? "text-grievance"
+                      : "text-grease"
+                }
+              >
+                {room.status === "connected"
+                  ? "Uplink open"
+                  : room.error
+                    ? "Uplink offline"
+                    : "Connecting…"}
+              </span>
             </div>
           </div>
 
@@ -453,7 +490,7 @@ export default function BossPage() {
           {snapshot && snapshot.grievanceFeed.length > 0 && (
             <GrievanceFeed
               items={snapshot.grievanceFeed}
-              canHide={true}
+              canHide={isPrimaryHost}
               onHide={(id) => room.hostHideGrievance(id)}
             />
           )}

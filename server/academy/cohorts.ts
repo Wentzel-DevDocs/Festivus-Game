@@ -55,7 +55,9 @@ export class AcademyCohortManager {
     }
 
     const track = getAcademyRoom(String(args?.trackSlug ?? ""));
-    if (!track) return { ok: false, reason: "Unknown academy track." };
+    if (!track || track.status !== "playable") {
+      return { ok: false, reason: "This academy track is not open for live cohorts." };
+    }
 
     const learnerKey = String(args?.learnerKey ?? "");
     if (!LEARNER_KEY.test(learnerKey)) {

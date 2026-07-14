@@ -25,6 +25,7 @@ import {
 } from "../../lib/academy/cohortProtocol";
 import { AcademyCohortManager } from "../academy/cohorts";
 import { RoomCore, sanitizeJoin, TICK_MS, type Transport } from "./core";
+import { EmptyRoomLifecycle } from "./roomLifecycle";
 
 // Local-dev convenience: load .env.local if the (dev-only) dotenv package is
 // present. In production the host (Railway) provides env directly, dotenv is
@@ -48,6 +49,7 @@ const io = new Server(PORT, {
 // socket auto-joins, so `io.to(id)` targets exactly one connection.
 const FESTIVUS_CHANNEL = "festivus:main";
 const academyChannel = (roomCode: string) => `academy:${roomCode}`;
+const FESTIVUS_RECONNECT_GRACE_MS = 20_000;
 const ACADEMY_RECONNECT_GRACE_MS = 20_000;
 
 const transport: Transport = {
@@ -62,14 +64,15 @@ const env = {
   internalSecret: process.env.INTERNAL_API_SECRET || "",
 };
 
-// The live room. Recreated when it empties, so the next crowd starts in a
-// fresh lobby (the old "everyone went home mid-match" behavior).
-let core = makeCore();
 function makeCore(): RoomCore {
   const c = new RoomCore(transport, env);
   void c.start();
   return c;
 }
+
+// Preserve an empty room through the client's reconnect window. If nobody
+// returns, the next crowd still receives a clean lobby.
+const roomLifecycle = new EmptyRoomLifecycle(makeCore, FESTIVUS_RECONNECT_GRACE_MS);
 
 /** Socket.IO query values arrive as string | string[] | undefined. */
 function str(v: unknown): string | undefined {
@@ -85,6 +88,13 @@ io.on("connection", (socket) => {
         const result = academyCohorts.join(socket.id, args);
         if (result.ok && result.snapshot) {
           if (previousRoom && previousRoom !== result.snapshot.roomCode) {
+            const departedSnapshot = academyCohorts.snapshot(previousRoom);
+            if (departedSnapshot) {
+              socket.to(academyChannel(previousRoom)).emit(
+                ACADEMY_COHORT_EVENTS.snapshot,
+                departedSnapshot,
+              );
+            }
             void socket.leave(academyChannel(previousRoom));
           }
           void socket.join(academyChannel(result.snapshot.roomCode));
@@ -131,24 +141,30 @@ io.on("connection", (socket) => {
 
   void socket.join(FESTIVUS_CHANNEL);
   const q = socket.handshake.query;
-  core.connect(socket.id, sanitizeJoin({ role: str(q.role), name: str(q.name), stickyId: str(q.stickyId) }));
+  const socketCore = roomLifecycle.acquire();
+  socketCore.connect(
+    socket.id,
+    sanitizeJoin({ role: str(q.role), name: str(q.name), stickyId: str(q.stickyId) }),
+  );
 
   socket.on("rpc", (payload: { method?: string; args?: unknown }, ack?: (r: unknown) => void) => {
-    const result = payload?.method ? core.action(socket.id, payload.method, payload.args) : { ok: false };
+    const result = payload?.method
+      ? socketCore.action(socket.id, payload.method, payload.args)
+      : { ok: false };
     if (typeof ack === "function") ack(result);
   });
 
   socket.on("msg", (payload: { method?: string; args?: unknown }) => {
-    if (payload?.method) core.action(socket.id, payload.method, payload.args);
+    if (payload?.method) socketCore.action(socket.id, payload.method, payload.args);
   });
 
   socket.on("disconnect", () => {
-    core.disconnect(socket.id);
-    if (core.connectionCount === 0) core = makeCore();
+    socketCore.disconnect(socket.id);
+    roomLifecycle.releaseIfEmpty(socketCore);
   });
 });
 
 // The fixed ~25 Hz tick, always driven by whichever core is current.
-setInterval(() => core.tick(), TICK_MS);
+setInterval(() => roomLifecycle.current.tick(), TICK_MS);
 
 console.log(`Festivus room server listening on :${PORT}`);

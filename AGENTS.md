@@ -23,7 +23,8 @@ Key facts about THIS project's realtime layer:
   without a network.
 - `server/game/server.ts` is a **thin Socket.IO adapter** over `RoomCore`: it
   owns the WebSocket lifecycle and a ~25 Hz `setInterval` tick, listens on
-  `$PORT`, and recreates the room when the last client leaves (fresh lobby).
+  `$PORT`, preserves an empty room for a 20-second reconnect grace, then
+  recreates it as a fresh lobby if nobody returns.
 - Wire protocol: server emits `"snapshot"` / `"you"`; client emits `"rpc"`
   `{method,args}` (with a Socket.IO ack for the return value) and `"msg"`
   `{method,args}` (fire-and-forget). Both map to `RoomCore.action()`. The

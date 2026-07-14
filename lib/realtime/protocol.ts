@@ -32,7 +32,7 @@ export interface JoinParams {
  *   tap(sideIndex)              one help/hinder mash (solo events)
  *   tap()                       one assigned-team mash (tug-of-war)
  *   hostStart()                 start the match (host only)
- *   startNextMatch()            player restarts a completed splash only
+ *   startNextMatch()            player starts from an idle lobby/splash
  *   hostSkip()                  skip the current phase (host only)
  *   hostHideGrievance(id)       remove a grievance from the feed (host only)
  *   submitGrievance(text)       blind-submit a gripe
@@ -142,9 +142,10 @@ export interface YouMessage {
   isHost: boolean;
   role: Role;
   /** Your display name AFTER server sanitation (profanity mask, trim). The
-   *  client uses this — not its locally saved input — to find itself in
-   *  the public roster. */
+   *  client uses this instead of its locally saved input. */
   name: string;
+  /** Private own effort total; never broadcast and never linked to a side. */
+  mashes: number;
   /** Your tug-of-war team, when assigned. */
   team: 0 | 1 | null;
   /** Private quota state so refreshes still show an accurate personal count. */
