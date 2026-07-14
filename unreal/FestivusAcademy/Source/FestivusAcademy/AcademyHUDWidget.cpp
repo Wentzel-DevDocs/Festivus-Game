@@ -4,12 +4,14 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
+#include "Components/ButtonSlot.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "FestivusAcademy.h"
 #include "WebBrowser.h"
 
 namespace
@@ -25,24 +27,25 @@ void FillOverlay(UOverlaySlot* Slot)
 void UAcademyHUDWidget::NativeConstruct()
 {
     Super::NativeConstruct();
+    UE_LOG(LogFestivusAcademy, Display, TEXT("Academy native HUD constructing its UMG tree."));
 
     UOverlay* Root = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("AcademyRoot"));
     WidgetTree->RootWidget = Root;
 
     UBorder* Dimmer = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("Dimmer"));
-    Dimmer->SetBrushColor(FLinearColor(0.015f, 0.025f, 0.04f, 0.84f));
+    Dimmer->SetBrushColor(FLinearColor(0.005f, 0.012f, 0.022f, 0.28f));
     FillOverlay(Root->AddChildToOverlay(Dimmer));
 
     USizeBox* MenuWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("MenuWidth"));
-    MenuWidth->SetWidthOverride(760.0f);
+    MenuWidth->SetWidthOverride(640.0f);
     UOverlaySlot* MenuWidthSlot = Root->AddChildToOverlay(MenuWidth);
-    MenuWidthSlot->SetHorizontalAlignment(HAlign_Center);
+    MenuWidthSlot->SetHorizontalAlignment(HAlign_Left);
     MenuWidthSlot->SetVerticalAlignment(VAlign_Center);
-    MenuWidthSlot->SetPadding(FMargin(32.0f));
+    MenuWidthSlot->SetPadding(FMargin(48.0f, 28.0f));
 
     UBorder* MenuBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("MenuBorder"));
-    MenuBorder->SetBrushColor(FLinearColor(0.025f, 0.045f, 0.065f, 0.94f));
-    MenuBorder->SetPadding(FMargin(34.0f));
+    MenuBorder->SetBrushColor(FLinearColor(0.012f, 0.026f, 0.045f, 0.91f));
+    MenuBorder->SetPadding(FMargin(38.0f));
     MenuWidth->SetContent(MenuBorder);
 
     UVerticalBox* Menu = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("AcademyMenu"));
@@ -51,7 +54,7 @@ void UAcademyHUDWidget::NativeConstruct()
     UTextBlock* Eyebrow = CreateText(TEXT("THE FEATS WERE ONLY THE ENTRANCE EXAM"), 16, FLinearColor(0.91f, 0.66f, 0.25f));
     Menu->AddChildToVerticalBox(Eyebrow)->SetPadding(FMargin(0, 0, 0, 10));
 
-    UTextBlock* Title = CreateText(TEXT("JUSTIN'S DEVELOPER ACADEMY"), 43, FLinearColor(0.94f, 0.97f, 0.95f));
+    UTextBlock* Title = CreateText(TEXT("JUSTIN'S\nDEVELOPER ACADEMY"), 43, FLinearColor(0.94f, 0.97f, 0.95f));
     Menu->AddChildToVerticalBox(Title)->SetPadding(FMargin(0, 0, 0, 12));
 
     UTextBlock* Description = CreateText(
@@ -139,6 +142,12 @@ UButton* UAcademyHUDWidget::CreateMenuButton(const FString& Label, const FLinear
     UTextBlock* Text = CreateText(Label, 16, Accent);
     Text->SetJustification(ETextJustify::Center);
     Button->SetContent(Text);
+    if (UButtonSlot* ButtonSlot = Cast<UButtonSlot>(Text->Slot))
+    {
+        ButtonSlot->SetPadding(FMargin(18.0f, 13.0f));
+        ButtonSlot->SetHorizontalAlignment(HAlign_Fill);
+        ButtonSlot->SetVerticalAlignment(VAlign_Center);
+    }
     return Button;
 }
 
