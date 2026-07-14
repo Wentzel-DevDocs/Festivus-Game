@@ -321,11 +321,9 @@ function GrievanceComposer({
 function PhasePanel({
   room,
   snapshot,
-  myName,
 }: {
   room: RoomApi;
   snapshot: Snapshot;
-  myName: string;
 }) {
   const phase = snapshot.phase;
   const meta = snapshot.eventMeta;
@@ -350,12 +348,12 @@ function PhasePanel({
               </div>
               <span className="hud-chip">Live socket</span>
             </div>
-            {/* Fallback for phone-only parties with no big screen plugged in:
-                the first player becomes host and can start from here. */}
-            {room.you?.isHost && (
+            {/* Any connected player may launch an idle lobby. This prevents a
+                stale/reconnected boss display from stranding a new crowd. */}
+            {room.status === "connected" && (
               <button
                 type="button"
-                onClick={() => room.hostStart()}
+                onClick={() => room.startNextMatch()}
                 className="action-plate display-header mt-4 min-h-12 w-full border border-grievance px-4 py-3 text-lg tracking-widest text-aluminum-100"
               >
                 Ship the feats
@@ -397,7 +395,11 @@ function PhasePanel({
           <div className="hud-chip self-center" role="status">
             Shuffled order · zero attribution
           </div>
-          <GrievanceFeed items={snapshot.grievanceFeed} canHide={false} />
+          <GrievanceFeed
+            items={snapshot.grievanceFeed}
+            canHide={room.you?.isHost === true}
+            onHide={(id) => room.hostHideGrievance(id)}
+          />
         </div>
       );
 
@@ -414,7 +416,9 @@ function PhasePanel({
       // is the one that just ended. Mash totals are public leaderboard data.
       const last = snapshot.roundResults[snapshot.roundResults.length - 1];
       const labels = meta?.sideLabels ?? ["Support", "Hinder"];
-      const myMashes = snapshot.players.find((p) => p.name === myName)?.mashes ?? 0;
+      // Private per-connection effort avoids confusing two players who chose
+      // the same display name; it carries no help/hinder attribution.
+      const myMashes = room.you?.mashes ?? 0;
       const assignmentLabel =
         team === 0
           ? "Team A assigned · your pulls move only Team A"
@@ -669,6 +673,12 @@ export default function PlayPage() {
       : [];
   const tickerMessages = revealTexts.length > 0 ? revealTexts : IDLE_TICKER_LINES;
   const isEventPhase = phase?.startsWith("event_") ?? false;
+  const canHostSkip =
+    room.status === "connected" &&
+    room.you?.isHost === true &&
+    phase !== null &&
+    phase !== "lobby" &&
+    phase !== "splash";
   const shellModeClass = isEventPhase
     ? "controller-shell--event max-w-6xl"
     : "controller-shell--flow max-w-lg";
@@ -692,6 +702,17 @@ export default function PlayPage() {
           <PhaseBanner snapshot={snapshot} />
         </div>
         <ConnectionDot status={room.status} />
+        {canHostSkip && (
+          <button
+            type="button"
+            onClick={() => room.hostSkip()}
+            aria-label="Skip the current phase as room host"
+            title="Host override: skip the current phase"
+            className="controller-host-skip aluminum-panel min-h-11 shrink-0 px-3 font-mono text-[10px] font-bold uppercase tracking-wider text-grease"
+          >
+            Skip
+          </button>
+        )}
         <button
           type="button"
           onClick={toggleMute}
@@ -722,33 +743,63 @@ export default function PlayPage() {
         </button>
       </header>
 
-      {/* b. Phase-dependent main panel. myName prefers the SERVER-sanitized
-          name (profanity mask / trim can rewrite what was typed) so the
-          roster lookup always matches. */}
+      {/* b. Phase-dependent main panel. Private per-connection facts come
+          from `you`; the public snapshot remains aggregate-only. */}
       <div
         className={`controller-phase-main min-h-0 flex-1 ${isEventPhase ? "controller-phase-main--event" : "controller-phase-main--flow"}`}
       >
         {snapshot && join ? (
-          <PhasePanel room={room} snapshot={snapshot} myName={room.you?.name || join.name} />
+          <PhasePanel room={room} snapshot={snapshot} />
         ) : (
           <div className="controller-connecting flex flex-col gap-3">
             <AmbientStage
               room={room}
               kicker="Secure room handshake"
-              title="Joining the all-hands"
-              detail="Negotiating the live socket and loading the arena. Your controller will recover automatically if the connection drops."
+              title={room.error ? "Room uplink unavailable" : "Joining the all-hands"}
+              detail={
+                room.error
+                  ? "No stale game controls are active. Automatic reconnection continues while you check the room service."
+                  : "Negotiating the live socket and loading the arena. Your controller will recover automatically if the connection drops."
+              }
               size="connecting"
             />
-            <div className="forge-panel p-4" role="status" aria-live="polite">
+            <div
+              className="forge-panel p-4"
+              role={room.error ? "alert" : "status"}
+              aria-live="polite"
+            >
               <div className="flex items-center gap-3">
-                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-grease" aria-hidden="true" />
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${room.error ? "bg-grievance" : "animate-pulse bg-grease"}`}
+                  aria-hidden="true"
+                />
                 <div>
-                  <p className="eyebrow">Connection pending</p>
+                  <p className="eyebrow">
+                    {room.error ? "Connection interrupted" : "Connection pending"}
+                  </p>
                   <p className="mt-1 text-sm text-aluminum-300">
-                    Registering this controller with the live room…
+                    {room.error ?? "Registering this controller with the live room…"}
                   </p>
                 </div>
               </div>
+              {room.error && (
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => room.reconnect()}
+                    className="min-h-11 rounded-md border border-support px-3 text-sm font-semibold text-support"
+                  >
+                    Retry now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.replace("/")}
+                    className="min-h-11 rounded-md border border-aluminum-600 px-3 text-sm text-aluminum-300"
+                  >
+                    Change player
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

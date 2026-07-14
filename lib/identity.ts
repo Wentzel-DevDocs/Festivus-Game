@@ -18,6 +18,7 @@ const MUTE_KEY = "festivus.muted";
 
 /** In-memory fallback when localStorage is unavailable. */
 let tabId: string | null = null;
+let tabName = "";
 
 /**
  * crypto.randomUUID exists only in SECURE contexts (https / localhost).
@@ -61,11 +62,25 @@ export function getStickyId(): string {
 }
 
 export function getSavedName(): string {
-  return storage()?.getItem(NAME_KEY) ?? "";
+  const s = storage();
+  if (!s) return tabName;
+  try {
+    return s.getItem(NAME_KEY) ?? tabName;
+  } catch {
+    return tabName;
+  }
 }
 
 export function saveName(name: string): void {
-  storage()?.setItem(NAME_KEY, name.slice(0, 24));
+  const clean = name.slice(0, 24);
+  // Keep navigation working in sandboxed/private contexts where storage is
+  // denied. The module survives the landing → controller client transition.
+  tabName = clean;
+  try {
+    storage()?.setItem(NAME_KEY, clean);
+  } catch {
+    // The per-tab value above remains available for this session.
+  }
 }
 
 export function getMuted(): boolean {

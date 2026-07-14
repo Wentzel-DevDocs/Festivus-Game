@@ -221,8 +221,9 @@ Without them, persistence simply no-ops (the game is unaffected). You can also
 set `APP_ORIGIN` to your Vercel URL to restrict CORS (defaults to `*`).
 
 > Socket.IO auto-reconnects the client, so a dropped connection heals itself.
-> One server hosts the single shared room; when the last person leaves it resets
-> to a fresh lobby for the next crowd.
+> One server hosts the single shared room. If everyone drops, it preserves the
+> match for a 20-second reconnect grace; only then does it reset to a fresh
+> lobby for the next crowd.
 
 ---
 
@@ -231,7 +232,8 @@ set `APP_ORIGIN` to your Vercel URL to restrict CORS (defaults to `*`).
 Everything auto-advances; the host (the first boss screen) can skip any phase.
 
 1. **Lobby** — people trickle in, pick names. Grievance submissions are
-   already open. Host presses start.
+   already open. The host or any connected player can press start, so an old
+   display can never strand a new crowd after a room-server restart.
 2. **Airing of Grievances** (45 s) — every player gets their own quota of up
    to **3 grievances** (not 3 for the room), 140 characters each, **blind**:
    nobody sees them yet, and no author is attached, ever. The window closes
@@ -442,6 +444,13 @@ If anyone (including you) accidentally breaks the promise, `pnpm sim` fails.
 ---
 
 ## Testing
+
+Academy drafts, AI briefs, and completion are stored locally under the current
+learner identity. **Start new learner** clears every locally saved Academy room,
+rotates that identity, and disconnects it from any live cohort before another
+person uses the same browser or Unreal installation. Open tabs reconcile newer
+progress through browser storage events; live cohort aggregates remain transient
+room-server state and never retain candidate source.
 
 ```bash
 pnpm typecheck   # TypeScript strict — no build, just checks the types

@@ -136,8 +136,26 @@ interface Ctx {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/**
+ * One entry per logical player, even when that person has several tabs open.
+ * Connections remain independent for delivery/host routing, but every piece
+ * of game math is sticky-identity based (matching taps, effort and quotas).
+ * The most recently joined tab supplies the current display name.
+ */
 function playerEntries(c: any): [string, RosterEntry][] {
-  return [...(c.vars as Vars).roster.entries()].filter(([, r]) => r.role === "player");
+  const logicalPlayers = new Map<string, [string, RosterEntry]>();
+  for (const [connId, entry] of (c.vars as Vars).roster.entries()) {
+    if (entry.role === "player") logicalPlayers.set(entry.stickyId, [connId, entry]);
+  }
+  return [...logicalPlayers.values()];
+}
+
+function bossConnectionCount(c: any): number {
+  let count = 0;
+  for (const entry of (c.vars as Vars).roster.values()) {
+    if (entry.role === "boss") count++;
+  }
+  return count;
 }
 
 /**
@@ -222,6 +240,7 @@ function sendYou(c: any, connId: string) {
     isHost: hostConnId(c) === connId,
     role: entry.role,
     name: entry.name,
+    mashes: v.effort.get(entry.stickyId)?.mashes ?? 0,
     team: v.teamBySticky.get(entry.stickyId) ?? null,
     grievancesRemaining: Math.max(
       0,
@@ -234,6 +253,12 @@ function sendYou(c: any, connId: string) {
 
 function sendYouToAll(c: any) {
   for (const id of (c.vars as Vars).roster.keys()) sendYou(c, id);
+}
+
+function sendYouToSticky(c: any, stickyId: string) {
+  for (const [id, entry] of (c.vars as Vars).roster.entries()) {
+    if (entry.stickyId === stickyId) sendYou(c, id);
+  }
 }
 
 /* ── Round + match lifecycle (the SessionHooks implementation) ──────────── */
@@ -455,7 +480,7 @@ function buildSnapshot(c: any, now: number): Snapshot {
     fx: v.fx,
     players,
     playerCount: players.length,
-    bossCount: v.roster.size - players.length,
+    bossCount: bossConnectionCount(c),
     sideCounts: ev && inEvent ? sideCounts(c) : null,
     grievanceFeed: v.revealedFeed,
     grievanceCount: v.grievances.length,
@@ -680,6 +705,7 @@ export class RoomCore {
       isHost: hostConnId(c) === c.conn!.id,
       role: entry?.role ?? "player",
       name: entry?.name ?? "",
+      mashes: entry ? (v.effort.get(entry.stickyId)?.mashes ?? 0) : 0,
       team: entry ? (v.teamBySticky.get(entry.stickyId) ?? null) : null,
       grievancesRemaining: entry
         ? Math.max(
@@ -734,6 +760,7 @@ export class RoomCore {
     e.mashes++;
     e.name = entry.name;
     v.effort.set(entry.stickyId, e);
+    sendYouToSticky(c, entry.stickyId);
     return { counted: true, side };
   }
 
@@ -754,7 +781,7 @@ export class RoomCore {
 
     v.grievances.push({ id: crypto.randomUUID(), text: clean });
     v.grievanceCountBySticky.set(entry.stickyId, used + 1);
-    sendYou(c, c.conn!.id);
+    sendYouToSticky(c, entry.stickyId);
     return { ok: true };
   }
 
@@ -768,17 +795,19 @@ export class RoomCore {
   }
 
   /**
-   * A completed singleton room may outlive its crowd while an old display
-   * remains connected. Let any real player explicitly begin the next match
-   * from splash so a stale host cannot strand a new group on old results.
+   * A singleton room may outlive its crowd while an old display remains
+   * connected (including across a room-server deploy). Let any real player
+   * explicitly begin from either idle phase so a stale host cannot strand a
+   * new group. Lobby grievances are retained; completed-match data is reset.
    */
   private startNextMatch(): { ok: boolean } {
     const c = this.c;
     const entry = c.vars.roster.get(c.conn!.id);
-    if (entry?.role !== "player" || c.vars.session.phase !== "splash") {
+    const phase = c.vars.session.phase;
+    if (entry?.role !== "player" || (phase !== "lobby" && phase !== "splash")) {
       return { ok: false };
     }
-    return this.beginMatch(false);
+    return this.beginMatch(phase === "lobby");
   }
 
   private beginMatch(keepGrievances: boolean): { ok: boolean } {

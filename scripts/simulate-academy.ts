@@ -34,8 +34,38 @@ const invalidRoom = manager.join("socket-invalid", {
 });
 assert.equal(invalidRoom.ok, false);
 
+const invalidLearner = manager.join("socket-invalid-learner", {
+  roomCode: "VALID2",
+  trackSlug: track.slug,
+  name: "Linus",
+  learnerKey: "bad",
+});
+assert.equal(invalidLearner.ok, false, "Malformed reconnect identities must fail closed.");
+
 const otherTrack = ACADEMY_CATALOG.rooms.find((room) => room.slug !== track.slug);
 assert(otherTrack);
+const previewTrack = ACADEMY_CATALOG.rooms.find((room) => room.status !== "playable");
+assert(previewTrack);
+const previewReservation = manager.join("socket-preview-reservation", {
+  roomCode: "LOCK42",
+  trackSlug: previewTrack.slug,
+  name: "Preview Squatter",
+  learnerKey: "learner-preview-001",
+});
+assert.equal(previewReservation.ok, false, "Preview tracks must not reserve live cohort codes.");
+const playableAfterPreview = manager.join("socket-playable-after-preview", {
+  roomCode: "LOCK42",
+  trackSlug: track.slug,
+  name: "Barbara",
+  learnerKey: "learner-barbara-001",
+});
+assert.equal(
+  playableAfterPreview.ok,
+  true,
+  "A rejected preview join must leave the code available to a playable track.",
+);
+manager.leave("socket-playable-after-preview");
+
 const wrongTrack = manager.join("socket-wrong-track", {
   roomCode,
   trackSlug: otherTrack.slug,
@@ -43,6 +73,29 @@ const wrongTrack = manager.join("socket-wrong-track", {
   learnerKey: "learner-margaret-001",
 });
 assert.equal(wrongTrack.ok, false, "A room code must be locked to one technology track.");
+
+const switcher = manager.join("socket-switcher", {
+  roomCode,
+  trackSlug: track.slug,
+  name: "Edsger",
+  learnerKey: "learner-switcher-001",
+});
+assert.equal(switcher.ok, true);
+assert.equal(switcher.snapshot?.connectedCount, 3);
+const switched = manager.join("socket-switcher", {
+  roomCode: "NEXT42",
+  trackSlug: track.slug,
+  name: "Edsger",
+  learnerKey: "learner-switcher-001",
+});
+assert.equal(switched.ok, true);
+assert.equal(switched.snapshot?.roomCode, "NEXT42");
+assert.equal(
+  manager.snapshot(roomCode)?.connectedCount,
+  2,
+  "Switching rooms must remove the learner from the departed cohort immediately.",
+);
+manager.leave("socket-switcher");
 
 const incomplete = manager.validateMission("socket-learner", mission.id, mission.starterCode);
 assert.equal(incomplete.ok, false, "Starter code must not clear the mission.");

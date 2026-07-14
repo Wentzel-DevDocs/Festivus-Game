@@ -15,7 +15,9 @@
  *   6. the approval verdict matches weighted aggregate action contribution
  *   7. the champion is the top masher
  *   8. the grievance limit is three per player, independently
- *   9. a late player can escape a completed room without stale-host access
+ *   9. players can escape idle rooms without stale-host access
+ *  10. duplicate tabs remain one logical player with one shared quota/team
+ *  11. empty-room reconnect grace preserves, then eventually resets, state
  *
  * RoomCore is transport-agnostic, so this needs no server, no WebSockets, and
  * no DB — the fetch stub makes tuning/persistence no-op to defaults. The
@@ -31,6 +33,7 @@ import type { Transport } from "../server/game/core";
 async function main() {
   // Dynamic imports so TIME_SCALE is set before config.ts is evaluated.
   const { RoomCore, sanitizeJoin, TICK_MS } = await import("../server/game/core");
+  const { EmptyRoomLifecycle } = await import("../server/game/roomLifecycle");
   const { GAME_CONFIG } = await import("../lib/game/config");
   const { EVENTS } = await import("../lib/game/engine/registry");
   const { EVT_SNAPSHOT, EVT_YOU } = await import("../lib/realtime/protocol");
@@ -43,6 +46,43 @@ async function main() {
     console.log(`${cond ? "  ✓" : "  ✗ FAIL"} ${label}`);
     if (!cond) failures.push(label);
   };
+
+  /* ── empty-room lifecycle policy (deterministic fake timers) ────────── */
+
+  let timerId = 0;
+  const pendingTimers = new Map<number, () => void>();
+  const createdRooms: Array<{ connectionCount: number; generation: number }> = [];
+  const lifecycle = new EmptyRoomLifecycle(
+    () => {
+      const room = { connectionCount: 0, generation: createdRooms.length + 1 };
+      createdRooms.push(room);
+      return room;
+    },
+    20_000,
+    {
+      schedule(callback) {
+        const id = ++timerId;
+        pendingTimers.set(id, callback);
+        return id;
+      },
+      cancel(handle) {
+        pendingTimers.delete(handle as number);
+      },
+    },
+  );
+  const firstRoom = lifecycle.current;
+  lifecycle.releaseIfEmpty(firstRoom);
+  const staleExpiry = [...pendingTimers.values()][0];
+  firstRoom.connectionCount = 1;
+  check(lifecycle.acquire() === firstRoom, "reconnect inside grace preserves the live room");
+  check(pendingTimers.size === 0, "reconnect cancels the pending empty-room reset");
+  firstRoom.connectionCount = 0;
+  lifecycle.releaseIfEmpty(firstRoom);
+  const expiry = [...pendingTimers.values()][0];
+  staleExpiry?.();
+  check(lifecycle.current === firstRoom, "a stale reset callback cannot replace a repopulated room");
+  expiry?.();
+  check(lifecycle.current !== firstRoom, "room resets after the empty reconnect grace expires");
 
   /* ── in-memory transport: fan messages out to per-conn handlers ───────── */
 
@@ -106,13 +146,24 @@ async function main() {
 
   const players = Array.from({ length: 5 }, (_, i) => ({
     id: `p${i}`,
-    name: `Player${i + 1}`,
+    // Two distinct people deliberately share a display name. Private `you`
+    // messages, not a public name lookup, must identify their own effort.
+    name: i === 1 ? "Player1" : `Player${i + 1}`,
+    stickyId: crypto.randomUUID(),
     you: null as YouMessage | null,
   }));
   for (const p of players) {
     conns.set(p.id, { onYou: (m) => (p.you = m) });
-    core.connect(p.id, sanitizeJoin({ role: "player", name: p.name, stickyId: crypto.randomUUID() }));
+    core.connect(p.id, sanitizeJoin({ role: "player", name: p.name, stickyId: p.stickyId }));
   }
+
+  const duplicateId = "p0-second-tab";
+  let duplicateYou: YouMessage | null = null;
+  conns.set(duplicateId, { onYou: (message) => (duplicateYou = message) });
+  core.connect(
+    duplicateId,
+    sanitizeJoin({ role: "player", name: players[0].name, stickyId: players[0].stickyId }),
+  );
 
   /** Call an action and get its result synchronously (RoomCore is in-proc). */
   const act = <T,>(id: string, method: string, arg?: unknown): T => core.action(id, method, arg) as T;
@@ -125,6 +176,9 @@ async function main() {
 
   await until(() => latest !== null, 20_000, "boss receives snapshots");
   check(latest!.phase === "lobby", "room starts in lobby");
+  await until(() => latest?.playerCount === 5, 2_000, "duplicate tab remains one logical player");
+  check(core.playerCount === 5, "core player count deduplicates sticky identities");
+  check(latest!.players.length === 5, "public roster deduplicates the second tab");
 
   /* ── (2) boss inputs are ignored server-side ─────────────────────────── */
 
@@ -135,18 +189,28 @@ async function main() {
     "non-host player cannot start the lobby",
   );
   check(
+    act<{ ok: boolean }>(players[0].id, "submitGrievance", "Retain this lobby grievance").ok,
+    "player can prewrite a lobby grievance",
+  );
+  check(
+    act<{ ok: boolean }>(players[0].id, "startNextMatch").ok,
+    "player can start a fresh lobby even while a stale boss owns host",
+  );
+  check(
     !act<{ ok: boolean }>(players[0].id, "startNextMatch").ok,
-    "fresh-game action is refused before splash",
+    "player lobby start is single-use once the phase advances",
   );
 
   /* ── start match: grievances ─────────────────────────────────────────── */
 
-  check(act<{ ok: boolean }>(bossId, "hostStart").ok, "boss (host) can start the match");
-
   await until(() => latest?.phase === "grievance_write", 5000, "grievance window opens");
+  check(
+    (latest as Snapshot | null)?.grievanceCount === 1,
+    "player lobby start retains prewritten grievances",
+  );
   // (8) Quotas belong to each player, not the room. Two players can each
   // submit all three while their fourth is rejected independently.
-  for (const i of [1, 2, 3]) {
+  for (const i of [2, 3]) {
     check(
       act<{ ok: boolean }>(players[0].id, "submitGrievance", `Player one grievance ${i}`).ok,
       `player 1 grievance ${i}/3 accepted`,
@@ -205,6 +269,12 @@ async function main() {
       );
       const teamA = players.filter((p) => p.you?.team === 0).length;
       check(teamA === 2 || teamA === 3, `teams split 2/3 or 3/2 (A=${teamA})`);
+      check(
+        ((latest as Snapshot | null)?.sideCounts?.[0] ?? 0) +
+          ((latest as Snapshot | null)?.sideCounts?.[1] ?? 0) ===
+          5,
+        "duplicate tab does not inflate public tug headcounts",
+      );
     }
 
     await until(() => latest?.phase === "event_active", 15_000, `event ${eventNum + 1} active`);
@@ -218,6 +288,14 @@ async function main() {
       const hinder = act<{ counted: boolean; side?: 0 | 1 }>(players[0].id, "tap", 1);
       check(help.counted && help.side === 0, "player can help on a direct action");
       check(hinder.counted && hinder.side === 1, "same player can immediately hinder");
+      if (eventNum === 0) {
+        check(players[0].you?.mashes === 2, "private own effort updates for the acting player");
+        check(
+          (duplicateYou as YouMessage | null)?.mashes === 2,
+          "same-sticky tabs share the private effort total",
+        );
+        check(players[1].you?.mashes === 0, "same-name player retains a distinct private effort total");
+      }
     } else {
       const assigned = players[0].you?.team;
       const spoofed = act<{ counted: boolean; side?: 0 | 1 }>(
@@ -331,6 +409,8 @@ async function main() {
     "fresh match gives the late player a full grievance quota",
   );
   check(freshSnapshot?.approvalHidden === true, "fresh match reseals aggregate approval");
+  core.disconnect(duplicateId);
+  check(core.playerCount === 6, "closing one duplicate tab keeps its logical player connected");
 
   clearInterval(ticker);
 
