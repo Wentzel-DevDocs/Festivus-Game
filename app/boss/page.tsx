@@ -20,6 +20,7 @@ import { useRoom } from "@/lib/realtime/useRoom";
 import type { JoinParams } from "@/lib/realtime/protocol";
 import type { FxEvent } from "@/lib/game/engine/types";
 import type { Phase } from "@/lib/game/engine/session";
+import { GAME_CONFIG } from "@/lib/game/config";
 import { getStickyId, getMuted, saveMuted } from "@/lib/identity";
 import { sound, type Sting } from "@/lib/sound";
 
@@ -316,8 +317,8 @@ export default function BossPage() {
                   </p>
                   <div className="hud-rule my-5" />
                   <p className="mx-auto max-w-xl text-sm text-aluminum-300 lg:text-base">
-                    Reports are sealed until the postmortem. Authorship is discarded
-                    at intake and never enters the broadcast payload.
+                    Each player may seal up to {GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER} reports.
+                    Authorship is discarded at intake and never enters the broadcast payload.
                   </p>
                   <div className="mt-5 flex justify-center gap-2" aria-hidden="true">
                     <span className="status-rune status-rune--active" />

@@ -9,11 +9,11 @@
  *    (~25 Hz) for the PixiJS canvas to interpolate from,
  *  - mirrors it into React state at a gentler ~10 Hz so the DOM
  *    (timers, leaderboards) re-renders cheaply,
- *  - surfaces per-connection facts ("you": host flag, team, own side),
- *  - exposes typed action senders (tap, pickSide, host controls…).
+ *  - surfaces per-connection facts ("you": host flag and tug team),
+ *  - exposes typed action senders (direct-side tap, host controls…).
  *
- * Transport: value-returning actions (pickSide, submitGrievance,
- * switchToPlayer, hello) use Socket.IO acks (`emitWithAck`); taps and host
+ * Transport: value-returning actions (submitGrievance, switchToPlayer,
+ * hello) use Socket.IO acks (`emitWithAck`); taps and host
  * controls are fire-and-forget emits. Socket.IO auto-reconnects, so a dropped
  * connection heals itself.
  */
@@ -46,8 +46,8 @@ export interface RoomApi {
   you: YouMessage | null;
   status: RoomStatus;
   onFx(cb: (fx: FxEvent) => void): () => void;
-  tap(): void;
-  pickSide(side: 0 | 1): Promise<0 | 1 | null>;
+  /** Side is required for solo events and omitted for assigned-team tug. */
+  tap(side?: 0 | 1): void;
   submitGrievance(text: string): Promise<{ ok: boolean; reason?: string }>;
   hostStart(): void;
   hostSkip(): void;
@@ -150,13 +150,8 @@ export function useRoom(join: JoinParams | null): RoomApi {
         fxListeners.current.add(cb);
         return () => fxListeners.current.delete(cb);
       },
-      tap() {
-        conn()?.fire("tap");
-      },
-      async pickSide(side) {
-        const res = await (conn()?.rpc<{ ok: boolean; side: 0 | 1 | null }>("pickSide", side) ??
-          Promise.resolve(null));
-        return res?.side ?? null;
+      tap(side) {
+        conn()?.fire("tap", side);
       },
       async submitGrievance(text) {
         const res = await (conn()?.rpc<{ ok: boolean; reason?: string }>("submitGrievance", text) ??

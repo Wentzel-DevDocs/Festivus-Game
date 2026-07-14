@@ -3,7 +3,7 @@
 /**
  * PhaseBanner — the status strip across the top of every screen: which
  * phase of the party we're in, how long it has left, and (during events)
- * the aggregate headcounts per side.
+ * the aggregate direct-action totals per side.
  *
  * Timer accuracy: a snapshot tells us "the phase ends N ms after the
  * server's clock read T". That number is frozen the moment the snapshot is
@@ -54,7 +54,7 @@ function phaseKicker(snap: Snapshot): string {
     case "grievance_reveal":
       return "Postmortem unsealed";
     case "event_countdown":
-      return "Choose allegiance";
+      return "Dual inputs arming";
     case "event_active":
       return "Production under load";
     case "event_outcome":
@@ -101,15 +101,15 @@ export default function PhaseBanner({ snapshot }: PhaseBannerProps) {
   const meta = snapshot?.eventMeta ?? null;
   const isEventPhase = snapshot?.phase.startsWith("event") ?? false;
 
-  // Headcount line: anonymous aggregates only ("9 helping · 4 hindering").
-  // Tug-of-war teams are public, so there we name the teams instead.
+  // Solo rounds expose anonymous action totals, never who pressed them.
+  // Tug-of-war teams are public, so there we name the team headcounts.
   let countsLine: string | null = null;
   if (snapshot?.sideCounts) {
     const [a, b] = snapshot.sideCounts;
     countsLine =
       isEventPhase && meta?.teamBased
         ? `Team A ${a} · Team B ${b}`
-        : `${a} helping · ${b} hindering`;
+        : `${a} help actions · ${b} hinder actions`;
   }
 
   return (

@@ -4,9 +4,9 @@
  * ANONYMITY BY CONSTRUCTION: notice that nothing in this file mentions a
  * player id, name, or connection. Event modules only ever see a SIDE INDEX
  * (0 = help Justin, 1 = hinder Justin; for tug-of-war, 0 = Team A, 1 = Team B).
- * The room resolves "which side is this tap on?" through an ephemeral
- * per-round token held in memory, then throws the token away. An event module
- * literally cannot leak who picked what — it never knows.
+ * The room validates the direct side carried by each solo tap, strips the
+ * identity, and forwards only that SideIndex. An event module literally
+ * cannot leak who did what — it never knows.
  *
  * The contract's `render` half lives client-side: each module here has a
  * matching PixiJS scene in render/scenes/<id>.ts, keyed by the same id and
@@ -51,7 +51,7 @@ export interface FxEvent {
 export interface EventInitCtx {
   /** Total connected players (not bosses). */
   playerCount: number;
-  /** Players per side — AGGREGATE headcounts only. */
+  /** Solo: aggregate action totals. Tug: public team headcounts. */
   sideCounts: [number, number];
   /** Tuning numbers (level_config row, or defaults from lib/game/config). */
   params: EventParams;
@@ -66,8 +66,8 @@ export interface EventTickCtx extends EventInitCtx {
 }
 
 /**
- * What a finished event reports. AGGREGATES ONLY — force totals and
- * headcounts per side. This is exactly what lands in the round_results
+ * What a finished event reports. AGGREGATES ONLY — force totals and legacy
+ * headcount columns. This is exactly what lands in round_results
  * table; there is nowhere to put a player id even if you wanted to.
  */
 export interface EventResult {
@@ -78,7 +78,7 @@ export interface EventResult {
   /** Total counted taps per side across the event. */
   supportForce: number;
   hinderForce: number;
-  /** Headcount per side (how many PEOPLE, not taps). */
+  /** Public team headcounts in tug; zero when not applicable to solo play. */
   supportHead: number;
   hinderHead: number;
 }
@@ -94,11 +94,11 @@ export interface EventModule<S = unknown> {
   id: string;
   /** Display name for the countdown banner. */
   name: string;
-  /** [help label, hinder label] shown on the side picker. */
+  /** [help label, hinder label] shown on the direct action controls. */
   sideLabels: [string, string];
   /** Scoring weight: finale = 2, everything else = 1. */
   weight: number;
-  /** True only for tug-of-war: sides are assigned teams, not secret picks. */
+  /** True only for tug-of-war: actions use assigned public teams. */
   teamBased: boolean;
   /** Default active-window length; level_config can override. */
   durationSec: number;

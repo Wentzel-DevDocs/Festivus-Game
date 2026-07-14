@@ -9,8 +9,8 @@
  *   lobby            → wait (and pre-write grievances)
  *   grievance_write  → the anonymous grievance composer
  *   grievance_reveal → "eyes on the big screen" + the feed
- *   event_countdown  → pick a side + big countdown number
- *   event_active     → pick a side + MASH
+ *   event_countdown  → both direct action controls arm
+ *   event_active     → HELP or HINDER on every strike
  *   event_outcome    → who carried the round
  *   finale           → a small canvas so phone-only parties see the box pop
  *   splash           → match summary + leaderboard (+ run it back for host)
@@ -31,8 +31,9 @@ import { sound, type Sting } from "@/lib/sound";
 import { GAME_CONFIG } from "@/lib/game/config";
 
 import GameCanvas from "@/render/core";
+import DualActionPad from "@/components/DualActionPad";
 import MashButton from "@/components/MashButton";
-import SidePicker from "@/components/SidePicker";
+import TeamAssignment from "@/components/TeamAssignment";
 import Leaderboard from "@/components/Leaderboard";
 import GrievanceFeed from "@/components/GrievanceFeed";
 import Ticker from "@/components/Ticker";
@@ -185,15 +186,17 @@ function GrievanceComposer({
   // We remember how many the server ACCEPTED from us, so we can show the
   // remaining quota and a little "sent" receipt per submission.
   const [sent, setSent] = useState<string[]>([]);
-  // The SERVER'S quota survives refreshes and remounts (it's keyed by your
-  // sticky id); our local `sent` list does not. When the server says the
-  // limit is reached, trust it over the local count.
-  const [limitReached, setLimitReached] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const remaining = limitReached
-    ? 0
-    : GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER - sent.length;
+  // The private `you` message keeps this exact after refresh; the local
+  // receipt count makes the button update immediately while its ack travels.
+  const remaining = Math.max(
+    0,
+    Math.min(
+      room.you?.grievancesRemaining ?? GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER,
+      GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER - sent.length,
+    ),
+  );
 
   async function submit() {
     const trimmed = text.trim();
@@ -204,7 +207,6 @@ function GrievanceComposer({
       setText("");
       setError(null);
     } else if (res.reason === "limit reached") {
-      setLimitReached(true);
       setError("You've aired your full allotment of grievances. The rest can wait for dinner.");
     } else {
       // e.g. a dropped connection or the wrong phase.
@@ -228,8 +230,11 @@ function GrievanceComposer({
           </h2>
           {note && <p className="mt-1 text-xs text-aluminum-400">{note}</p>}
         </div>
-        <span className="hud-chip shrink-0" aria-label={`${remaining} submissions remaining`}>
-          {remaining}/{GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER} left
+        <span
+          className="hud-chip shrink-0"
+          aria-label={`${remaining} of ${GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER} per-player submissions remaining`}
+        >
+          {remaining}/{GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER} yours left
         </span>
       </div>
 
@@ -237,8 +242,9 @@ function GrievanceComposer({
         id="grievance-privacy"
         className="controller-grievance-privacy rounded-lg border border-support/20 bg-support/5 px-3 py-2 text-xs leading-5 text-aluminum-300"
       >
-        Grievance identity is never collected—there is no author field in the
-        live room or database. The room sees only a sealed count until reveal.
+        Every player may seal up to {GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER} grievances.
+        Identity is never collected—there is no author field in the live room or
+        database. The room sees only a sealed count until reveal.
       </p>
 
       <div className="flex flex-col gap-2">
@@ -398,28 +404,22 @@ function PhasePanel({
     case "event_active":
     case "event_outcome": {
       const teamBased = meta?.teamBased ?? false;
-      const picked = room.you?.side ?? null;
       const team = room.you?.team ?? null;
-      // You may only mash once the event is live AND you belong to a side —
-      // your secret pick in solo events, your public team in tug-of-war.
-      const canMash =
-        phase === "event_active" && (teamBased ? team !== null : picked !== null);
+      // Tug-of-war remains a public assigned-team mash. Every other event
+      // dispatches a help/hinder side directly on each strike.
+      const canTeamMash = phase === "event_active" && teamBased && team !== null;
 
       // The server appends the finished round to roundResults; the last entry
       // is the one that just ended. Mash totals are public leaderboard data.
       const last = snapshot.roundResults[snapshot.roundResults.length - 1];
       const labels = meta?.sideLabels ?? ["Support", "Hinder"];
       const myMashes = snapshot.players.find((p) => p.name === myName)?.mashes ?? 0;
-      const hasAssignment = teamBased ? team !== null : picked !== null;
-      const assignmentLabel = teamBased
-        ? team === 0
-          ? "Team A assigned"
+      const assignmentLabel =
+        team === 0
+          ? "Team A assigned · your pulls move only Team A"
           : team === 1
-            ? "Team B assigned"
-            : "Team assignment pending"
-        : picked !== null
-          ? `${labels[picked]} locked · secret`
-          : "Pick a side to unlock mashing";
+            ? "Team B assigned · your pulls move only Team B"
+            : "Team assignment pending";
       const eventPhaseKey = phase.replace("event_", "");
 
       return (
@@ -473,32 +473,30 @@ function PhasePanel({
               </div>
             ) : (
               <>
-                {phase === "event_active" && hasAssignment ? (
-                  <div
-                    className="controller-assignment hud-chip min-h-11 justify-center text-center"
-                    role="status"
-                  >
-                    {assignmentLabel}
-                  </div>
+                {teamBased ? (
+                  <>
+                    {phase === "event_active" ? (
+                      <div
+                        className="controller-assignment hud-chip min-h-11 justify-center text-center"
+                        role="status"
+                      >
+                        {assignmentLabel}
+                      </div>
+                    ) : (
+                      <TeamAssignment team={team} />
+                    )}
+                    <MashButton
+                      enabled={canTeamMash}
+                      label={team === 0 ? "Pull A" : team === 1 ? "Pull B" : "Pull"}
+                      onTap={() => room.tap()}
+                    />
+                  </>
                 ) : (
-                  <SidePicker
-                    labels={meta?.sideLabels ?? ["Help", "Hinder"]}
-                    picked={picked}
-                    team={team}
-                    teamBased={teamBased}
-                    onPick={(side) => void room.pickSide(side)}
+                  <DualActionPad
+                    labels={labels}
+                    state={phase === "event_active" ? "active" : "countdown"}
+                    onTap={(side) => room.tap(side)}
                   />
-                )}
-
-                {phase === "event_active" ? (
-                  <MashButton enabled={canMash} onTap={() => room.tap()} />
-                ) : (
-                  <div className="controller-countdown-note forge-panel px-4 py-3 text-center">
-                    <p className="eyebrow">Input gate armed</p>
-                    <p className="mt-1 text-sm text-aluminum-300">
-                      Lock your side now. Mashing opens when the countdown clears.
-                    </p>
-                  </div>
                 )}
               </>
             )}
@@ -535,7 +533,7 @@ function PhasePanel({
             room={room}
             kicker="Post-match review"
             title="The room has reached a verdict"
-            detail="Aggregate headcounts decided the result. Individual choices remain sealed."
+            detail="Weighted aggregate actions decided the result. Players could help, hinder, or do both; no action was tied to an identity."
             size="report"
           />
           <SplashCard summary={snapshot.matchSummary} />

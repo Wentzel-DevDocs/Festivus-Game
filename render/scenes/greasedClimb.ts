@@ -22,6 +22,7 @@ import {
   ParticleBurst,
   Shaker,
   makeBody,
+  makeJointedLimb,
   makeJustinHead,
   makePole,
   springTo,
@@ -117,16 +118,40 @@ export const greasedClimbScene: SceneFactory = () => {
   /* ── builders ─────────────────────────────────────────────────────────── */
 
   function buildJustin(): Container {
-    // Origin at his torso center, ON the pole. Arm and leg bars cross the
-    // pole horizontally, which is all it takes to read as "hugging it".
+    // Origin at his torso center, ON the pole. Alternating near/far limbs
+    // wrap around the shaft, creating a readable three-quarter climbing pose.
     const c = new Container();
-    const legs = new Graphics().roundRect(-17, 10, 34, 7, 3.5).fill({ color: TROUSER_GREY });
+    const rearLeg = makeJointedLimb(
+      [[7, 7], [17, 15], [7, 23]],
+      { width: 6, color: TROUSER_GREY, highlight: COLORS.aluminum },
+    );
+    const rearArm = makeJointedLimb(
+      [[8, -18], [19, -11], [3, -3]],
+      { width: 6, color: 0x26313b, endColor: COLORS.skin, highlight: COLORS.aluminum },
+    );
     const body = makeBody(30, 44);
     body.position.set(0, -24); // shirt spans y -24..20
-    const arms = new Graphics().roundRect(-19, -22, 38, 7, 3.5).fill({ color: COLORS.skin });
+    const leadLeg = makeJointedLimb(
+      [[-7, 8], [-18, 17], [-6, 24]],
+      { width: 6.5, color: 0x1b252e, highlight: COLORS.aluminumLight },
+    );
+    const boots = new Graphics()
+      .roundRect(-11, 19, 12, 7, 3)
+      .fill({ color: COLORS.void })
+      .roundRect(1, 19, 12, 7, 3)
+      .fill({ color: COLORS.void })
+      .moveTo(-9, 20)
+      .lineTo(-2, 20)
+      .moveTo(3, 20)
+      .lineTo(10, 20)
+      .stroke({ width: 1, color: COLORS.aluminumLight, alpha: 0.45 });
+    const leadArm = makeJointedLimb(
+      [[-8, -20], [-20, -14], [-3, -8]],
+      { width: 6.5, color: 0x33404b, endColor: COLORS.skin, highlight: COLORS.aluminumLight },
+    );
     const head = makeJustinHead(40, services.photoUrl);
     head.position.set(0, -44);
-    c.addChild(legs, body, arms, head);
+    c.addChild(rearLeg, rearArm, body, leadLeg, boots, leadArm, head);
     return c;
   }
 
@@ -216,8 +241,12 @@ export const greasedClimbScene: SceneFactory = () => {
     poleX = w / 2;
     baseY = h * 0.88;
     poleLen = h * 0.8; // a properly tall pole — ~80% of the screen
+    const justinScale = w < 560 || h < 300 ? 1.2 : 1.25;
+    justin.scale.set(justinScale);
     bottomY = baseY - 36;
-    topY = baseY - poleLen + 26;
+    // Compensate the top endpoint by the enlarged portrait radius. Progress
+    // still maps to the same pole range, while his head clears the pennant.
+    topY = baseY - poleLen + 26 + (justinScale - 1) * 64;
 
     // The pole was built at 100px; stretching scale.y keeps its width crisp.
     pole.position.set(poleX, baseY);

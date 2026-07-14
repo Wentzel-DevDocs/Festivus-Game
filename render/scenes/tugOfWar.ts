@@ -16,7 +16,15 @@
 
 import { Container, Graphics, Text } from "pixi.js";
 import type { SceneFactory, SceneServices, SceneUpdateArgs } from "../core";
-import { COLORS, makeBody, makeJustinHead, ParticleBurst, Shaker, springTo } from "../toolkit";
+import {
+  COLORS,
+  makeBody,
+  makeJointedLimb,
+  makeJustinHead,
+  ParticleBurst,
+  Shaker,
+  springTo,
+} from "../toolkit";
 import type { SpringState } from "../toolkit";
 
 const ALUMINUM_300 = 0xb8bfc6; // --color-aluminum-300 from globals.css
@@ -225,46 +233,121 @@ class OutcomeBanner {
  * figure's RIGHT (left team) and −1 when it is to their LEFT (right team) —
  * it only flips which way the arms reach.
  */
-function makePuller(facing: 1 | -1): Container {
+function makePuller(facing: 1 | -1, accent: number, variant: number): Container {
   const root = new Container();
-  const legs = new Graphics()
-    .moveTo(-6, 0)
-    .lineTo(-2, -18)
-    .moveTo(8, 0)
-    .lineTo(2, -18)
-    .stroke({ width: 5, color: 0x4b535b });
-  const body = new Graphics().roundRect(-9, -52, 18, 36, 6).fill({ color: 0x6b747d });
-  const head = new Graphics().circle(0, -62, 9).fill({ color: COLORS.aluminum });
-  const arms = new Graphics()
-    .moveTo(facing * 4, -46)
-    .lineTo(facing * 24, -34)
-    .stroke({ width: 5, color: 0x6b747d });
-  root.addChild(legs, body, head, arms);
+  const skinTones = [COLORS.skin, 0x8f5d43, 0xe4b281];
+  const skinLights = [COLORS.skinLight, 0xbd8465, 0xf2cda5];
+  const hairTones = [0x2c2521, 0x14171b, 0x65452d];
+  const uniformTones = [0x46525d, 0x3e4d59, 0x52606a];
+  const skin = skinTones[variant % skinTones.length];
+  const skinLight = skinLights[variant % skinLights.length];
+  const hair = hairTones[variant % hairTones.length];
+  const uniform = uniformTones[variant % uniformTones.length];
+  const shadow = new Graphics().ellipse(0, 1, 16, 4).fill({ color: COLORS.void, alpha: 0.55 });
+  const farLeg = makeJointedLimb(
+    [[-3, -19], [-8, -9], [-13, -1]],
+    { width: 7, color: 0x303943, highlight: COLORS.aluminum },
+  );
+  const nearLeg = makeJointedLimb(
+    [[3, -19], [8, -8], [12, -1]],
+    { width: 7.5, color: 0x414c56, highlight: COLORS.aluminumLight },
+  );
+  const boots = new Graphics()
+    .roundRect(-17, -5, 13, 6, 2.5)
+    .fill({ color: COLORS.void })
+    .roundRect(5, -5, 13, 6, 2.5)
+    .fill({ color: COLORS.void })
+    .moveTo(-15, -3.5)
+    .lineTo(-7, -3.5)
+    .moveTo(8, -3.5)
+    .lineTo(15, -3.5)
+    .stroke({ width: 1, color: COLORS.aluminumLight, alpha: 0.4 });
+  const body = new Graphics()
+    .roundRect(-12, -54, 24, 38, 7)
+    .fill({ color: COLORS.void })
+    .roundRect(-10, -52, 20, 34, 6)
+    .fill({ color: uniform })
+    .poly([-9, -49, 0, -39, -2, -20, -9, -25])
+    .fill({ color: 0x71808c, alpha: 0.32 })
+    .rect(-9, -24, 18, 4)
+    .fill({ color: accent, alpha: 0.82 })
+    .circle(0, -35, 2)
+    .fill({ color: accent, alpha: 0.68 });
+  const rearArm = makeJointedLimb(
+    [[-facing * 5, -45], [facing * 10, -40], [facing * 22, -34]],
+    { width: 6, color: 0x3b4650, endColor: skin, endHighlight: skinLight, highlight: COLORS.aluminum },
+  );
+  const leadArm = makeJointedLimb(
+    [[facing * 6, -47], [facing * 16, -42], [facing * 27, -34]],
+    { width: 6.5, color: uniform, endColor: skin, endHighlight: skinLight, highlight: COLORS.aluminumLight },
+  );
+  const head = new Graphics()
+    .ellipse(facing * -1.5, -64, 11.5, 12.5)
+    .fill({ color: COLORS.void })
+    .ellipse(facing * -1.5, -64, 9.5, 10.5)
+    .fill({ color: skin })
+    .ellipse(facing * -4, -67, 4.5, 4)
+    .fill({ color: skinLight, alpha: 0.34 })
+    .arc(facing * -1.5, -64, 9.7, Math.PI * 1.02, Math.PI * 1.92)
+    .stroke({ width: 3, color: hair })
+    .circle(facing * 2, -64.5, 1)
+    .fill({ color: COLORS.void })
+    .moveTo(facing * 1, -60)
+    .lineTo(facing * 5, -60.5)
+    .stroke({ width: 1.1, color: 0x704633, alpha: 0.7 });
+  const collar = new Graphics()
+    .poly([-7, -52, 0, -47, 7, -52, 5, -55, -5, -55])
+    .fill({ color: COLORS.memo, alpha: 0.8 });
+  root.addChild(shadow, farLeg, rearArm, nearLeg, boots, body, collar, leadArm, head);
   return root;
 }
 
 /** Justin tied to the rope: head + shirt + a knot of rope coils at (0,0). */
 function makeRopeJustin(photoUrl: string): Container {
   const root = new Container();
+  const rearArm = makeJointedLimb(
+    [[-10, -8], [-16, -1], [-7, 1]],
+    { width: 5.5, color: 0x26313b, endColor: COLORS.skin, highlight: COLORS.aluminum },
+  );
   const body = makeBody(34, 46);
   body.position.set(0, -16); // rope crosses his chest, roughly tie height
-  const legs = new Graphics()
-    .moveTo(-6, 28)
-    .lineTo(-9, 44)
-    .moveTo(6, 28)
-    .lineTo(9, 44)
-    .stroke({ width: 5, color: COLORS.aluminumDark });
+  const rearLeg = makeJointedLimb(
+    [[-6, 26], [-11, 35], [-9, 45]],
+    { width: 6, color: 0x172029, highlight: COLORS.aluminum },
+  );
+  const leadLeg = makeJointedLimb(
+    [[6, 26], [12, 35], [10, 45]],
+    { width: 6.5, color: 0x26313b, highlight: COLORS.aluminumLight },
+  );
+  const boots = new Graphics()
+    .roundRect(-14, 41, 11, 7, 3)
+    .fill({ color: COLORS.void })
+    .roundRect(4, 41, 12, 7, 3)
+    .fill({ color: COLORS.void });
+  const leadArm = makeJointedLimb(
+    [[10, -8], [16, -2], [7, 2]],
+    { width: 6, color: 0x33404b, endColor: COLORS.skin, highlight: COLORS.aluminumLight },
+  );
   const head = makeJustinHead(38, photoUrl);
   head.position.set(0, -35);
   // The knot: three rope coils cinched around him at rope height (y = 0).
   const knot = new Graphics()
+    .roundRect(-18, -6, 36, 12, 6)
+    .fill({ color: COLORS.void, alpha: 0.78 })
     .circle(-8, 0, 5)
     .fill({ color: ROPE_BROWN })
     .circle(0, 0, 5)
     .fill({ color: ROPE_BROWN })
     .circle(8, 0, 5)
-    .fill({ color: ROPE_BROWN });
-  root.addChild(legs, body, knot, head);
+    .fill({ color: ROPE_BROWN })
+    .arc(-8, -1, 3.5, Math.PI * 1.1, Math.PI * 1.75)
+    .arc(0, -1, 3.5, Math.PI * 1.1, Math.PI * 1.75)
+    .arc(8, -1, 3.5, Math.PI * 1.1, Math.PI * 1.75)
+    .stroke({ width: 1.2, color: 0xd3a166, alpha: 0.55 })
+    .moveTo(8, 4)
+    .quadraticCurveTo(16, 10, 11, 17)
+    .stroke({ width: 4, color: ROPE_BROWN });
+  root.addChild(rearLeg, rearArm, body, leadLeg, boots, leadArm, knot, head);
   return root;
 }
 
@@ -335,20 +418,33 @@ export const tugOfWarScene: SceneFactory = () => {
       .lineTo(cx + winOff, groundY + 16)
       .stroke({ width: 3, color: COLORS.grease, alpha: 0.8 });
 
-    // Teams stand just OUTSIDE their own win line, lead puller nearest center.
+    // Teams stand just OUTSIDE their own win line on the broadcast. On narrow
+    // phone canvases there is not enough edge gutter for three bodies, so the
+    // formation steps inside the markers and compresses toward each edge.
+    const compactFormation = w < 560;
+    const compactLeadInset = Math.max(42, w * 0.14);
+    const compactSpacing = 40 * figScale;
     for (let i = 0; i < teamA.length; i++) {
       const a = teamA[i];
       a.scale.set(figScale);
-      a.position.set(cx - winOff - (30 + i * 46) * figScale, groundY);
       const b = teamB[i];
       b.scale.set(figScale);
-      b.position.set(cx + winOff + (30 + i * 46) * figScale, groundY);
+      if (compactFormation) {
+        a.position.set(cx - winOff + compactLeadInset - i * compactSpacing, groundY);
+        b.position.set(cx + winOff - compactLeadInset + i * compactSpacing, groundY);
+      } else {
+        a.position.set(cx - winOff - (30 + i * 46) * figScale, groundY);
+        b.position.set(cx + winOff + (30 + i * 46) * figScale, groundY);
+      }
     }
     // Rope ends anchor near the lead pullers' hands.
-    leftRopeX = cx - winOff - 6 * figScale;
-    rightRopeX = cx + winOff + 6 * figScale;
+    leftRopeX = compactFormation ? teamA[0].x + 25 * figScale : cx - winOff - 6 * figScale;
+    rightRopeX = compactFormation ? teamB[0].x - 25 * figScale : cx + winOff + 6 * figScale;
 
-    justin.scale.set(figScale);
+    // Justin is the focal rope marker, not another squad member. Scale around
+    // the knot at (0,0) so rope math stays exact as his portrait grows.
+    const heroMultiplier = w < 560 ? 1.22 : 1.3;
+    justin.scale.set(figScale * heroMultiplier);
 
     // Team labels sit above each squad (clamped so phones keep them on-screen).
     const labelSize = Math.min(26, w * 0.035);
@@ -388,8 +484,16 @@ export const tugOfWarScene: SceneFactory = () => {
 
       // Three pullers per team. Left team's arms reach right (+1), and
       // vice versa.
-      teamA = [makePuller(1), makePuller(1), makePuller(1)];
-      teamB = [makePuller(-1), makePuller(-1), makePuller(-1)];
+      teamA = [
+        makePuller(1, COLORS.support, 0),
+        makePuller(1, COLORS.support, 1),
+        makePuller(1, COLORS.support, 2),
+      ];
+      teamB = [
+        makePuller(-1, COLORS.grease, 2),
+        makePuller(-1, COLORS.grease, 1),
+        makePuller(-1, COLORS.grease, 0),
+      ];
       for (const p of [...teamA, ...teamB]) world.addChild(p);
 
       justin = makeRopeJustin(svc.photoUrl);

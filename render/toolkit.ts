@@ -184,7 +184,9 @@ export function makeJustinHead(size: number, photoUrl: string): Container {
         // The bundled key art is a head-and-shoulders portrait, so crop it
         // tighter inside the medallion. User-supplied overrides retain the
         // neutral fit that works for conventional face photos.
-        const isBundledPortrait = photoUrl === "/assets/justin-avatar-v2.png";
+        const isBundledPortrait =
+          photoUrl === "/assets/justin-avatar-v2.png" ||
+          photoUrl === "/assets/justin-avatar-v3.png";
         const cropZoom = isBundledPortrait ? 1.42 : 1;
         const scale = ((size - 4) * cropZoom) / Math.min(texture.width, texture.height);
         photo.scale.set(scale);
@@ -254,7 +256,88 @@ export function makeDrownedHead(size: number): Container {
   return root;
 }
 
-/* ── Stick body ───────────────────────────────────────────────────────────── */
+/* ── Character anatomy ────────────────────────────────────────────────────── */
+
+export interface JointedLimbOptions {
+  width: number;
+  color: number;
+  /** Optional exposed hand/boot at the final point. Pass 0 to omit it. */
+  endColor?: number;
+  endHighlight?: number;
+  /** Thin material highlight painted inside the main limb stroke. */
+  highlight?: number;
+  outline?: number;
+}
+
+/**
+ * A retained, jointed character limb. The broad dark under-stroke supplies a
+ * strong action-game silhouette, the inset stroke supplies the material, and
+ * joint caps keep sharp two-segment poses from reading as wire-frame elbows.
+ * Every layer is built once at scene mount; calling this has no frame cost.
+ */
+export function makeJointedLimb(
+  points: ReadonlyArray<readonly [number, number]>,
+  options: JointedLimbOptions,
+): Container {
+  const root = new Container();
+  if (points.length < 2) return root;
+
+  const outlineWidth = options.width + Math.max(2, options.width * 0.42);
+  const drawPath = (g: Graphics): Graphics => {
+    g.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) g.lineTo(points[i][0], points[i][1]);
+    return g;
+  };
+
+  const outline = drawPath(new Graphics()).stroke({
+    width: outlineWidth,
+    color: options.outline ?? COLORS.void,
+    cap: "round",
+    join: "round",
+  });
+  const material = drawPath(new Graphics()).stroke({
+    width: options.width,
+    color: options.color,
+    cap: "round",
+    join: "round",
+  });
+  const sheen = drawPath(new Graphics()).stroke({
+    width: Math.max(1, options.width * 0.22),
+    color: options.highlight ?? COLORS.aluminumLight,
+    alpha: 0.44,
+    cap: "round",
+    join: "round",
+  });
+  const joints = new Graphics();
+  for (let i = 1; i < points.length - 1; i++) {
+    joints
+      .circle(points[i][0], points[i][1], options.width * 0.64)
+      .fill({ color: options.outline ?? COLORS.void })
+      .circle(points[i][0], points[i][1], options.width * 0.42)
+      .fill({ color: options.color });
+  }
+
+  root.addChild(outline, material, sheen, joints);
+  if (options.endColor) {
+    const [x, y] = points[points.length - 1];
+    root.addChild(
+      new Graphics()
+        .circle(x + 1, y + 2, options.width * 0.76)
+        .fill({ color: COLORS.void, alpha: 0.86 })
+        .circle(x, y, options.width * 0.59)
+        .fill({ color: options.endColor })
+        .arc(x - options.width * 0.1, y - options.width * 0.08, options.width * 0.43, Math.PI * 1.05, Math.PI * 1.7)
+        .stroke({
+          width: Math.max(1, options.width * 0.12),
+          color: options.endHighlight ?? COLORS.skinLight,
+          alpha: 0.48,
+        }),
+    );
+  }
+  return root;
+}
+
+/* ── Justin's full-body rig ───────────────────────────────────────────────── */
 
 /**
  * Justin's forged executive rig. The public API and local coordinate contract
@@ -295,6 +378,20 @@ export function makeBody(width: number, height: number): Container {
     .lineTo(0, lowerStart + lowerH - 2)
     .stroke({ width: Math.max(1, width * 0.035), color: COLORS.aluminumDark, alpha: 0.72 });
 
+  // Articulated knee plates break the long trouser shapes into believable
+  // upper/lower leg masses, especially in the pin and swim rotations.
+  const kneeY = lowerStart + lowerH * 0.54;
+  const knees = new Graphics()
+    .roundRect(-width * 0.44, kneeY - width * 0.08, width * 0.4, width * 0.22, width * 0.07)
+    .fill({ color: COLORS.aluminumDark, alpha: 0.92 })
+    .roundRect(width * 0.04, kneeY - width * 0.08, width * 0.4, width * 0.22, width * 0.07)
+    .fill({ color: 0x3b4853, alpha: 0.9 })
+    .moveTo(-width * 0.39, kneeY - width * 0.02)
+    .lineTo(-width * 0.1, kneeY - width * 0.02)
+    .moveTo(width * 0.1, kneeY - width * 0.02)
+    .lineTo(width * 0.39, kneeY - width * 0.02)
+    .stroke({ width: Math.max(1, width * 0.03), color: COLORS.aluminumLight, alpha: 0.42 });
+
   // Forged boots stay inside the original y bounds. Toe plates extend sideways
   // for a readable stance but do not alter any scene's feet/origin math.
   const boots = new Graphics()
@@ -321,6 +418,27 @@ export function makeBody(width: number, height: number): Container {
     .fill({ color: 0x151d27 })
     .roundRect(-width * 0.42, chestY + chestH * 0.56, width * 0.84, chestH * 0.35, width * 0.12)
     .fill({ color: 0x10171e, alpha: 0.82 });
+  const coatPlanes = new Graphics()
+    // cool key-light plane on the near lapel/oblique
+    .poly([
+      -width * 0.43, chestY + chestH * 0.2,
+      -width * 0.08, chestY + chestH * 0.44,
+      -width * 0.16, chestY + chestH * 0.87,
+      -width * 0.43, chestY + chestH * 0.7,
+    ])
+    .fill({ color: 0x52606b, alpha: 0.24 })
+    // warm reflected arena light on the far flank
+    .poly([
+      width * 0.34, chestY + chestH * 0.2,
+      width * 0.46, chestY + chestH * 0.3,
+      width * 0.4, chestY + chestH * 0.74,
+      width * 0.22, chestY + chestH * 0.84,
+    ])
+    .fill({ color: COLORS.grease, alpha: 0.075 })
+    // lower coat seam / armored waist articulation
+    .moveTo(-width * 0.39, chestY + chestH * 0.68)
+    .quadraticCurveTo(0, chestY + chestH * 0.76, width * 0.39, chestY + chestH * 0.68)
+    .stroke({ width: Math.max(1, width * 0.035), color: COLORS.aluminum, alpha: 0.36 });
   const shoulders = new Graphics()
     .roundRect(-width * 0.7, chestY + 2, width * 0.38, chestH * 0.2, width * 0.12)
     .fill({ color: COLORS.void })
@@ -373,6 +491,17 @@ export function makeBody(width: number, height: number): Container {
     .circle(0, chestY + chestH * 0.72, Math.max(1.5, width * 0.045))
     .fill({ color: COLORS.grease, alpha: 0.82 });
 
+  // A neck guard connects portrait and torso, avoiding the paper-doll gap
+  // that becomes obvious when the character leans or rotates in event poses.
+  const neckGuard = new Graphics()
+    .roundRect(-width * 0.22, chestY - width * 0.08, width * 0.44, width * 0.24, width * 0.08)
+    .fill({ color: COLORS.void })
+    .roundRect(-width * 0.15, chestY - width * 0.045, width * 0.3, width * 0.14, width * 0.05)
+    .fill({ color: COLORS.skin })
+    .moveTo(-width * 0.12, chestY - width * 0.015)
+    .lineTo(width * 0.08, chestY - width * 0.015)
+    .stroke({ width: Math.max(1, width * 0.028), color: COLORS.skinLight, alpha: 0.5 });
+
   // A tiny abstract deployment core and route line: readable as a badge at
   // phone size, richer status detail at TV size, and never tied to live data.
   const runtimeBadge = new Graphics()
@@ -421,9 +550,12 @@ export function makeBody(width: number, height: number): Container {
   root.addChild(
     silhouette,
     lowerRig,
+    knees,
     boots,
     shoulders,
     coat,
+    coatPlanes,
+    neckGuard,
     collar,
     lapels,
     tie,

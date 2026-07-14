@@ -2,7 +2,7 @@
  * RoomCore — the transport-agnostic Festivus room.
  *
  * This holds ALL live truth and game logic that used to live in the Rivet
- * actor: the roster, the per-round anonymity tokens, the event simulation,
+ * actor: the roster, anonymous aggregate inputs, the event simulation,
  * the fixed tick, and every action. It knows nothing about WebSockets — it
  * talks to the outside world through a small `Transport` (broadcast + send
  * to one connection) injected by whoever hosts it:
@@ -82,11 +82,10 @@ export interface ConnState {
 interface Vars {
   session: SessionState;
   roster: Map<string, RosterEntry>;
-  /** ── per-round anonymity tokens (cleared in resetRound) ─────────────── */
-  sideByToken: Map<string, SideIndex>;
-  tokenBySticky: Map<string, string>;
   /** Tug-of-war team per player — PUBLIC by design (it's a team sport). */
   teamBySticky: Map<string, 0 | 1>;
+  /** Counted actions per side this round. Aggregate only; never keyed by player. */
+  sideActions: [number, number];
   /** ── live match data ────────────────────────────────────────────────── */
   eventState: unknown;
   eventParams: Record<string, EventParams>;
@@ -141,19 +140,22 @@ function playerEntries(c: any): [string, RosterEntry][] {
   return [...(c.vars as Vars).roster.entries()].filter(([, r]) => r.role === "player");
 }
 
-/** Aggregate headcounts per side for the current round. */
+/**
+ * Aggregate public side totals for the current round. Team events need
+ * headcounts for balancing; solo events expose counted actions because a
+ * player can contribute to either side on every press.
+ */
 function sideCounts(c: any): [number, number] {
   const v = c.vars as Vars;
-  const counts: [number, number] = [0, 0];
   if (currentEvent(c)?.teamBased) {
+    const counts: [number, number] = [0, 0];
     for (const [, r] of playerEntries(c)) {
       const team = v.teamBySticky.get(r.stickyId);
       if (team !== undefined) counts[team]++;
     }
-  } else {
-    for (const side of v.sideByToken.values()) counts[side]++;
+    return counts;
   }
-  return counts;
+  return [...v.sideActions] as [number, number];
 }
 
 function currentEvent(c: any) {
@@ -210,19 +212,22 @@ function hostConnId(c: any): string | null {
   return best?.id ?? null;
 }
 
-/** Private per-connection facts: host flag, own team, own secret side. */
+/** Private per-connection facts: host flag and own public tug team. */
 function sendYou(c: any, connId: string) {
   const v = c.vars as Vars;
   const conn = c.conns.get(connId);
   const entry = v.roster.get(connId);
   if (!conn || !entry) return;
-  const token = v.tokenBySticky.get(entry.stickyId);
   const msg: YouMessage = {
     isHost: hostConnId(c) === connId,
     role: entry.role,
     name: entry.name,
     team: v.teamBySticky.get(entry.stickyId) ?? null,
-    side: token !== undefined ? (v.sideByToken.get(token) ?? null) : null,
+    grievancesRemaining: Math.max(
+      0,
+      GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER -
+        (v.grievanceCountBySticky.get(entry.stickyId) ?? 0),
+    ),
   };
   conn.send(EVT_YOU, msg);
 }
@@ -237,9 +242,8 @@ function onEventStart(c: any, index: number) {
   const v = c.vars as Vars;
   const ev = EVENTS[index];
 
-  // The anonymity reset: every round starts with fresh, empty token maps.
-  v.sideByToken = new Map();
-  v.tokenBySticky = new Map();
+  // Side actions are aggregate-only and reset for every round.
+  v.sideActions = [0, 0];
   v.teamBySticky = new Map();
   v.fx = [];
 
@@ -273,8 +277,11 @@ function onEventEnd(c: any, index: number) {
   v.roundResults.push({ eventId: ev.id, eventName: ev.name, ...result });
 
   if (!ev.teamBased) {
-    v.approval.support += result.supportHead * ev.weight;
-    v.approval.hinder += result.hinderHead * ev.weight;
+    // With direct dual controls, players may help and hinder in the same
+    // round. Approval therefore follows aggregate action contribution, not
+    // an obsolete one-person/one-side headcount.
+    v.approval.support += result.supportForce * ev.weight;
+    v.approval.hinder += result.hinderForce * ev.weight;
   }
 
   v.fx.push({ type: result.winner === "support" ? "win" : "lose" });
@@ -317,8 +324,7 @@ function resetMatch(c: any, now: number, keepGrievances: boolean) {
   v.tapWindows = new Map();
   v.matchSummary = null;
   v.eventState = null;
-  v.sideByToken = new Map();
-  v.tokenBySticky = new Map();
+  v.sideActions = [0, 0];
   v.teamBySticky = new Map();
   v.fx = [];
   v.matchStartedAt = now;
@@ -464,9 +470,8 @@ function freshVars(): Vars {
   return {
     session: newSession(),
     roster: new Map(),
-    sideByToken: new Map(),
-    tokenBySticky: new Map(),
     teamBySticky: new Map(),
+    sideActions: [0, 0],
     eventState: null,
     eventParams: JSON.parse(JSON.stringify(DEFAULT_EVENT_PARAMS)),
     fx: [],
@@ -537,7 +542,9 @@ export class RoomCore {
         return (
           players.length > 0 &&
           players.every(
-            ([, r]) => (this.c.vars.grievanceCountBySticky.get(r.stickyId) ?? 0) > 0,
+            ([, r]) =>
+              (this.c.vars.grievanceCountBySticky.get(r.stickyId) ?? 0) >=
+              GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER,
           )
         );
       },
@@ -638,9 +645,11 @@ export class RoomCore {
         case "hello":
           return this.hello();
         case "tap":
-          return this.tap();
+          return this.tap(arg == null ? undefined : Number(arg));
         case "pickSide":
-          return this.pickSide(Number(arg));
+          // Backward-compatible refusal for stale clients. Solo play now
+          // chooses a side on every tap and never records a player-side map.
+          return { ok: false, side: null, reason: "direct actions only" };
         case "submitGrievance":
           return this.submitGrievance(String(arg ?? ""));
         case "hostStart":
@@ -665,39 +674,22 @@ export class RoomCore {
     const c = this.c;
     const v = c.vars;
     const entry = v.roster.get(c.conn!.id);
-    const token = entry ? v.tokenBySticky.get(entry.stickyId) : undefined;
     return {
       isHost: hostConnId(c) === c.conn!.id,
       role: entry?.role ?? "player",
       name: entry?.name ?? "",
       team: entry ? (v.teamBySticky.get(entry.stickyId) ?? null) : null,
-      side: token !== undefined ? (v.sideByToken.get(token) ?? null) : null,
+      grievancesRemaining: entry
+        ? Math.max(
+            0,
+            GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER -
+              (v.grievanceCountBySticky.get(entry.stickyId) ?? 0),
+          )
+        : 0,
     };
   }
 
-  private pickSide(sideIndex: number): { ok: boolean; side: SideIndex | null } {
-    const c = this.c;
-    const v = c.vars;
-    const entry = v.roster.get(c.conn!.id);
-    const ev = currentEvent(c);
-    const phaseOk =
-      v.session.phase === "event_countdown" || v.session.phase === "event_active";
-    if (!entry || entry.role !== "player" || !ev || ev.teamBased || !phaseOk) {
-      return { ok: false, side: null };
-    }
-    const existing = v.tokenBySticky.get(entry.stickyId);
-    if (existing !== undefined) {
-      return { ok: false, side: v.sideByToken.get(existing) ?? null };
-    }
-    const side: SideIndex = sideIndex === 1 ? 1 : 0;
-    const token = crypto.randomUUID();
-    v.sideByToken.set(token, side);
-    v.tokenBySticky.set(entry.stickyId, token);
-    sendYou(c, c.conn!.id);
-    return { ok: true, side };
-  }
-
-  private tap(): { counted: boolean } {
+  private tap(sideIndex?: number): { counted: boolean; side?: SideIndex } {
     const c = this.c;
     const v = c.vars;
     const entry = v.roster.get(c.conn!.id);
@@ -714,10 +706,13 @@ export class RoomCore {
 
     let side: SideIndex | undefined;
     if (ev.teamBased) {
+      // Assigned teams are authoritative. Any client-supplied side is
+      // ignored, preventing a player from acting for the opposing team.
       side = v.teamBySticky.get(entry.stickyId);
     } else {
-      const token = v.tokenBySticky.get(entry.stickyId);
-      side = token !== undefined ? v.sideByToken.get(token) : undefined;
+      // Solo events choose help/hinder on every press. Validate strictly so
+      // missing or malformed input never silently becomes a side.
+      side = sideIndex === 0 || sideIndex === 1 ? sideIndex : undefined;
     }
     if (side === undefined) return { counted: false };
 
@@ -725,18 +720,19 @@ export class RoomCore {
     const window = (v.tapWindows.get(entry.stickyId) ?? []).filter((t) => now - t < 1000);
     if (window.length >= GAME_CONFIG.MAX_COUNTED_TAPS_PER_SEC) {
       v.tapWindows.set(entry.stickyId, window);
-      return { counted: false };
+      return { counted: false, side };
     }
     window.push(now);
     v.tapWindows.set(entry.stickyId, window);
 
     ev.onInput(v.eventState, side, { kind: "tap" }, eventCtx(c));
+    v.sideActions[side]++;
 
     const e = v.effort.get(entry.stickyId) ?? { name: entry.name, mashes: 0 };
     e.mashes++;
     e.name = entry.name;
     v.effort.set(entry.stickyId, e);
-    return { counted: true };
+    return { counted: true, side };
   }
 
   private submitGrievance(text: string): { ok: boolean; reason?: string } {
@@ -756,6 +752,7 @@ export class RoomCore {
 
     v.grievances.push({ id: crypto.randomUUID(), text: clean });
     v.grievanceCountBySticky.set(entry.stickyId, used + 1);
+    sendYou(c, c.conn!.id);
     return { ok: true };
   }
 
@@ -769,6 +766,7 @@ export class RoomCore {
     c.waitUntil(loadEventParams(c));
     const now = Date.now();
     resetMatch(c, now, phase === "lobby");
+    sendYouToAll(c);
     startMatch(v.session, now, timing(c));
     return { ok: true };
   }

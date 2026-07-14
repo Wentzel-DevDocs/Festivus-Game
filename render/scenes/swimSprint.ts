@@ -23,6 +23,7 @@ import {
   Shaker,
   makeBody,
   makeDrownedHead,
+  makeJointedLimb,
   makeJustinHead,
   springTo,
 } from "../toolkit";
@@ -118,33 +119,97 @@ export const swimSprintScene: SceneFactory = () => {
 
   function buildSwimmer(): void {
     swimmer = new Container();
+    const rearLeg = makeJointedLimb(
+      [[-35, 4], [-50, -1], [-64, 3]],
+      { width: 6, color: 0x18212a, highlight: COLORS.aluminum },
+    );
+    const leadLeg = makeJointedLimb(
+      [[-34, 8], [-49, 14], [-63, 10]],
+      { width: 6.5, color: 0x26313b, highlight: COLORS.aluminumLight },
+    );
+    const rearArm = makeJointedLimb(
+      [[-6, 5], [-20, 15], [-33, 11]],
+      { width: 6, color: 0x26313b, endColor: COLORS.skin, highlight: COLORS.aluminum },
+    );
     // The office torso is drawn upright by makeBody, so we lie it flat:
     // rotating +90° makes it trail LEFT behind the head (he swims right).
     const body = makeBody(30, 46);
     body.rotation = HALF_PI;
     body.position.set(-8, 4);
+    const leadArm = makeJointedLimb(
+      [[-1, -4], [9, -13], [22, -9]],
+      { width: 6.5, color: 0x33404b, endColor: COLORS.skin, highlight: COLORS.aluminumLight },
+    );
     headNormal = makeJustinHead(40, services.photoUrl);
     headNormal.position.set(12, -2);
     headDrowned = makeDrownedHead(40); // blue face + X eyes, shown while sinking
     headDrowned.position.set(12, -2);
     headDrowned.visible = false;
-    swimmer.addChild(body, headNormal, headDrowned);
+    swimmer.addChild(rearLeg, leadLeg, rearArm, body, leadArm, headNormal, headDrowned);
   }
 
-  function makeGunnerFigure(): Container {
-    // Tiny coworker: circle head, memo shirt, and a pool-blue water gun
-    // angled down at the pool. Deadpan. Just following the memo.
+  function makeGunnerFigure(variant: number): Container {
+    // Compact but fully modeled arena crew: planted boots, layered uniform,
+    // a lit face plane and both hands controlling the water cannon.
     const fig = new Container();
-    const shirt = new Graphics().roundRect(-5, -11, 10, 16, 3).fill({ color: COLORS.memo });
-    const head = new Graphics().circle(0, -16, 5).fill({ color: COLORS.skin });
+    const skinTones = [COLORS.skin, 0x8f5d43, 0xe4b281, 0xc78964];
+    const skinLights = [COLORS.skinLight, 0xbd8465, 0xf2cda5, 0xe6af87];
+    const hairTones = [0x2b211c, 0x15191d, 0x6a4930, 0x403129];
+    const skin = skinTones[variant % skinTones.length];
+    const skinLight = skinLights[variant % skinLights.length];
+    const hair = hairTones[variant % hairTones.length];
+    const shadow = new Graphics().ellipse(0, 5, 11, 2.5).fill({ color: COLORS.void, alpha: 0.55 });
+    const legs = new Graphics()
+      .roundRect(-6, -2, 5, 8, 2)
+      .fill({ color: 0x1b252e })
+      .roundRect(1, -2, 5, 8, 2)
+      .fill({ color: 0x26313b })
+      .roundRect(-7, 3, 7, 3, 1.5)
+      .fill({ color: COLORS.void })
+      .roundRect(1, 3, 7, 3, 1.5)
+      .fill({ color: COLORS.void });
+    const shirt = new Graphics()
+      .roundRect(-7, -14, 14, 15, 4)
+      .fill({ color: COLORS.void })
+      .roundRect(-5.5, -13, 11, 13, 3)
+      .fill({ color: COLORS.memo })
+      .poly([-5, -13, 0, -8, 0, 0, -5, -2])
+      .fill({ color: COLORS.aluminum, alpha: 0.48 })
+      .rect(-5, -1, 10, 2)
+      .fill({ color: COLORS.pool, alpha: 0.7 });
+    const head = new Graphics()
+      .circle(0, -20, 6.5)
+      .fill({ color: COLORS.void })
+      .ellipse(0, -20, 5.2, 6)
+      .fill({ color: skin })
+      .ellipse(-1.8, -22, 2.6, 2.1)
+      .fill({ color: skinLight, alpha: 0.4 })
+      .arc(0, -20, 5.3, Math.PI * 1.02, Math.PI * 1.94)
+      .stroke({ width: 2.2, color: hair })
+      .circle(1.8, -20.5, 0.65)
+      .fill({ color: COLORS.void });
+    const arm = makeJointedLimb(
+      [[3, -11], [8, -8], [10, -6]],
+      {
+        width: 3.2,
+        color: COLORS.aluminumDark,
+        endColor: skin,
+        endHighlight: skinLight,
+        highlight: COLORS.aluminumLight,
+      },
+    );
     const gun = new Graphics()
-      .roundRect(0, -1.5, 12, 3, 1.5)
+      .roundRect(0, -2.5, 14, 5, 2.5)
+      .fill({ color: COLORS.void })
+      .roundRect(1, -1.5, 12, 3, 1.5)
       .fill({ color: COLORS.pool })
-      .rect(1, 1.5, 3, 4)
+      .circle(11, 0, 1.2)
+      .fill({ color: WATER_SURFACE })
+      .rect(2, 1.5, 4, 5)
       .fill({ color: COLORS.aluminumDark });
-    gun.position.set(3, -8);
+    gun.position.set(2, -8);
     gun.rotation = 0.7; // aimed down into the pool
-    fig.addChild(shirt, head, gun);
+    fig.addChild(shadow, legs, shirt, head, arm, gun);
     return fig;
   }
 
@@ -221,7 +286,11 @@ export const swimSprintScene: SceneFactory = () => {
   function layout(): void {
     surfaceY = h * 0.52;
     deckY = surfaceY - 34;
-    startX = Math.max(70, w * 0.12);
+    const justinScale = w < 560 || h < 300 ? 1.2 : 1.25;
+    swimmer.scale.set(justinScale);
+    // Scaling is centered on the swimmer's motion origin. Narrow canvases get
+    // a compensated starting inset so the longer trailing kick stays visible.
+    startX = Math.max(justinScale === 1.2 ? 86 : 70, w * 0.12);
     endX = w - 48; // stops just short of the touch pad
 
     // Static pool furniture, redrawn from scratch on resize.
@@ -436,7 +505,7 @@ export const swimSprintScene: SceneFactory = () => {
       crowd = new Container();
       gunners = [];
       for (let i = 0; i < 4; i++) {
-        const fig = makeGunnerFigure();
+        const fig = makeGunnerFigure(i);
         crowd.addChild(fig);
         // Staggered start times so they never fire in perfect sync.
         gunners.push({ fig, cooldownMs: 250 + i * 180 });

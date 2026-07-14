@@ -19,10 +19,10 @@ import Stamp from "@/components/Stamp";
 
 /** The five quick rules, verbatim — the whole game in one memo. */
 const QUICK_RULES = [
-  "Secretly choose whether this release helps Justin or hinders him",
-  "Mash to ship force; pace yourself or the controller overheats",
-  "Aggregate effort moves the shared arena—individual allegiance never leaves your phone",
-  "Raw output drives the leaderboard, regardless of which side you picked",
+  "Every strike can help Justin or hinder him—switch sides whenever you want",
+  "Both action buttons share one heat core, so pace the whole controller",
+  "Only aggregate side totals reach the arena—the roster never exposes them",
+  "Raw output drives the leaderboard, even when you play both sides",
   "The final feat is a 2× production deploy that crowns the champion",
 ];
 
@@ -72,13 +72,13 @@ export default function LandingPage() {
             <span className="block text-grease">Feats of Strength</span>
           </h1>
           <p className="landing-copy mt-4 max-w-xl text-sm leading-6 text-aluminum-300 md:mt-5 md:text-lg md:leading-7">
-            Choose an allegiance in secret. Power the boss—or grease his downfall.
-            Every phone controls the same living arena. No install. No accounts.
+            Help the boss, grease his downfall, or play both sides in the same
+            feat. Every phone controls the same living arena. No install. No accounts.
           </p>
 
           <div className="landing-chips mt-5 flex flex-wrap gap-2 md:mt-8">
             <span className="hud-chip">No install</span>
-            <span className="hud-chip">Anonymous sides</span>
+            <span className="hud-chip">Anonymous actions</span>
             <span className="hud-chip">One live arena</span>
           </div>
         </div>

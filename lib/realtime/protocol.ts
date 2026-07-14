@@ -2,15 +2,15 @@
  * The realtime protocol — every shape that crosses the WebSocket, shared by
  * the room server (server/game/core.ts) and the React pages (client).
  *
- * AUTHORITATIVE MODEL: clients send INPUTS ONLY (a tap, a side pick); the
+ * AUTHORITATIVE MODEL: clients send INPUTS ONLY (a tap plus its direct side);
  * actor is the single source of truth. It counts mashes itself, rate-caps
- * them per connection, simulates Justin, and broadcasts these snapshots
+ * them per sticky player identity, simulates Justin, and broadcasts snapshots
  * ~25×/second. Clients interpolate between snapshots and never report
  * totals of their own.
  *
  * ANONYMITY: read the Snapshot type bottom-up — there is no field anywhere
- * that pairs a player with a HELP/HINDER choice. Side data is aggregate
- * only (headcounts + force totals). The lone exception is tug-of-war
+ * that pairs a player with a HELP/HINDER action. Side data is aggregate
+ * only (action totals + force totals). The lone exception is tug-of-war
  * `team`, which is deliberately public (it's a team sport).
  */
 
@@ -29,8 +29,8 @@ export interface JoinParams {
 }
 
 /* ── Client → server: the action surface (see server/game/core.ts) ─────────
- *   pickSide(sideIndex)         secretly pick help/hinder for this round
- *   tap()                       one mash
+ *   tap(sideIndex)              one help/hinder mash (solo events)
+ *   tap()                       one assigned-team mash (tug-of-war)
  *   hostStart()                 start the match (host only)
  *   hostSkip()                  skip the current phase (host only)
  *   hostHideGrievance(id)       remove a grievance from the feed (host only)
@@ -67,13 +67,14 @@ export interface RoundResultPub {
   winner: "support" | "hinder";
   supportForce: number;
   hinderForce: number;
+  /** Public tug-team headcounts; zero for dual-action solo events. */
   supportHead: number;
   hinderHead: number;
 }
 
 /** Computed at match end, shown in the finale + splash. */
 export interface MatchSummary {
-  /** From AGGREGATE weighted headcounts only. */
+  /** From weighted AGGREGATE action contribution only. */
   verdict: "beloved" | "greased" | "divided";
   approvalSupport: number;
   approvalHinder: number;
@@ -84,7 +85,7 @@ export interface MatchSummary {
   headOfHousehold: string | null;
 }
 
-/** Static facts about the current event, for headers and side pickers. */
+/** Static facts about the current event, for headers and direct controls. */
 export interface EventMetaPub {
   id: string;
   name: string;
@@ -115,7 +116,10 @@ export interface Snapshot {
   players: PlayerPub[];
   playerCount: number;
   bossCount: number;
-  /** People per side this round — headcounts only ("9 helped, 4 greased"). */
+  /**
+   * Aggregate side totals. Solo events: counted actions per side. Tug:
+   * public team headcounts used for fair team balancing.
+   */
   sideCounts: [number, number] | null;
   /** Shuffled at reveal; empty before. Host-hidden items are removed. */
   grievanceFeed: GrievancePub[];
@@ -130,8 +134,8 @@ export interface Snapshot {
 
 /**
  * Private per-connection message (conn.send, never broadcast): connection
- * facts only YOU should see. Confirming your own pick back to you is fine —
- * you made it — it just must never reach anyone else or any storage.
+ * facts only YOU should see. Solo-side state does not exist: every direct
+ * action carries its side and is immediately reduced to aggregate totals.
  */
 export interface YouMessage {
   isHost: boolean;
@@ -142,8 +146,8 @@ export interface YouMessage {
   name: string;
   /** Your tug-of-war team, when assigned. */
   team: 0 | 1 | null;
-  /** Echo of your current secret side pick this round (null = not picked). */
-  side: 0 | 1 | null;
+  /** Private quota state so refreshes still show an accurate personal count. */
+  grievancesRemaining: number;
 }
 
 /** Event names the actor broadcasts / sends. */

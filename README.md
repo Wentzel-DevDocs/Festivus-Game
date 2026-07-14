@@ -6,11 +6,12 @@ This is a Jackbox-style all-hands party game. One laptop plugs into the big
 screen and becomes **the Boss broadcast**; everyone else opens the same URL on
 their phone and their phone becomes **a controller**. The theme is Festivus:
 the match opens with an anonymous Airing of Grievances, then five Feats of
-Strength in which a cartoon Justin swims, climbs, and gets pinned — powered
-(or sabotaged) by the room. Every round, each player **secretly** picks a side:
-help Justin or hinder him. Nobody — not the boss, not the database, not even
-the game code — can find out who picked what. That promise is enforced by
-architecture, not politeness, and there's a test that proves it (`pnpm sim`).
+Strength in which a cinematic Justin swims, climbs, and gets pinned — powered
+(or sabotaged) by the room. During every solo feat, **each press is a direct
+choice**: help Justin or hinder him. A player can alternate freely and play
+both sides in the same round. No public snapshot, event module, or database
+row can link an action side to a player. That promise is enforced by
+architecture, not politeness, and `pnpm sim` proves it.
 
 ---
 
@@ -147,7 +148,7 @@ What each table stores, one line each:
 | `players`            | One row per person (their sticky browser id): display name, all-time mashes, wins, best score. |
 | `matches`            | One row per finished match: timestamps, the aggregate approval totals, who was champion. |
 | `match_participants` | Per match, per player: how many mashes they landed. Effort only.             |
-| `round_results`      | Per event, per match: force totals and headcounts **per side** — aggregates, never people. |
+| `round_results`      | Per event, per match: force totals per side and public tug-team headcounts — never player-side links. |
 | `grievances`         | The aired grievances as bare text, tied to a match.                          |
 | `level_config`       | One row per event: the tuning numbers (`params_json`) the room loads at room start. |
 
@@ -231,18 +232,19 @@ Everything auto-advances; the host (the first boss screen) can skip any phase.
 
 1. **Lobby** — people trickle in, pick names. Grievance submissions are
    already open. Host presses start.
-2. **Airing of Grievances** (45 s) — everyone types up to 3 grievances,
-   140 characters each, **blind**: nobody sees them yet, and no author is
-   attached, ever. The window closes early once every player has aired at
-   least one.
+2. **Airing of Grievances** (45 s) — every player gets their own quota of up
+   to **3 grievances** (not 3 for the room), 140 characters each, **blind**:
+   nobody sees them yet, and no author is attached, ever. The window closes
+   early only after every connected player has used their full quota.
 3. **Shuffled reveal** (15 s) — the grievances hit the big screen in a
    Fisher–Yates-shuffled order, so submission order can't identify anyone.
    The host can hide any that go too far.
-4. **Five events**, each one: countdown (4 s, secretly pick your side) →
-   **~20–25 s of mashing** → outcome banner (5 s) → next event. Pace your
-   taps: the client shows an overheat meter, and the server ignores anything
-   past ~12 taps/sec anyway. Once per event a **Festivus Miracle** gives the
-   trailing side a small comeback nudge.
+4. **Five events**, each one: countdown (4 s, both action buttons arm) →
+   **~20–25 s of direct help/hinder strikes** → outcome banner (5 s) → next
+   event. Switch sides on any strike or contribute to both. The two buttons
+   share one overheat meter, and the server ignores anything past ~12 counted
+   taps/sec per person across both. Once per event a **Festivus Miracle** gives
+   the trailing side a small comeback nudge.
 
    | # | Event             | Sides (help / hinder)   | The gimmick |
    | - | ----------------- | ----------------------- | ----------- |
@@ -253,7 +255,7 @@ Everything auto-advances; the host (the first boss screen) can skip any phase.
    | 5 | **Pin the Boss**  | Prop Up / Pile On       | **Double points.** A spring-loaded pin bar: pile-on pushes it past the pin line and must *hold* it there through a 3-count; prop-up can smash the count back to zero. Wrestling rules. |
 
 5. **Jack-in-the-box finale** (9 s) — the crank turns, Justin pops.
-6. **Splash verdict** — the weighted headcounts from the four
+6. **Splash verdict** — the weighted aggregate action totals from the four
    help/hinder events (tug teams say nothing about feelings) decide whether
    Justin is **BELOVED**, **GREASED**, or the office is **DIVIDED**. The top
    masher is crowned champion and their win persists to Neon. The **Head of
@@ -288,8 +290,8 @@ export interface EventModule<S = unknown> {
 ```
 
 Note what's *not* in there: no player ids, names, or connections. Your module
-only ever sees a side index (0 or 1). It **cannot** leak who picked what,
-because it never knows.
+only ever sees a side index (0 or 1). It **cannot** leak who pressed which
+action because it never knows.
 
 **Step 1 — the server half.** Copy
 [`lib/game/events/poleRaise.ts`](lib/game/events/poleRaise.ts) (the simplest
@@ -384,34 +386,34 @@ zero/negative durations are ignored rather than trusted.) So:
 
 ## The anonymity promise (and how to check it)
 
-"Your side stays secret" is the game's one hard rule. It holds because each
-layer is *incapable* of telling on you:
+"Your actions are never linked to you" is the game's one hard rule. It holds
+because each layer is *incapable* of telling on you:
 
-- **Ephemeral tokens.** When you pick a side, the room mints a random token
-  and keeps `token → side` and `player → token` in two in-memory maps
-  (`vars`), which are **cleared every round and never written anywhere**. If
-  the process sleeps, sides evaporate.
+- **Identity is stripped before event logic.** Each solo tap carries side 0
+  or 1. The room validates it, applies the shared per-player rate cap,
+  increments only aggregate counters, then passes just that side index to the
+  event. There is no player-to-side map to inspect, persist, or leak.
 - **Aggregates only.** Event modules receive a side index, never a player.
-  Snapshots broadcast per-side totals and headcounts; the roster shows name,
-  mash count, and (during tug-of-war only) your public team — never a side.
+  Snapshots broadcast per-side action totals; the roster shows name, mash
+  count, and (during tug-of-war only) a public team — never action allegiance.
 - **No columns to leak into.** The database schema has no side column and no
   grievance author column. See `db/schema.ts`.
 - **Shuffled reveal.** Grievances are stored as bare text and revealed in a
   freshly shuffled order, so timing can't unmask an author.
-- **The boss is a spectator.** Boss connections' taps and side-picks are
-  refused server-side, so the big screen can't probe the room.
+- **The boss is a spectator.** Boss connections' taps are refused server-side,
+  so the big screen cannot probe the room.
 - **Server-side rate cap.** ~12 counted taps/sec per *person* (keyed by
   sticky id, so extra tabs don't multiply it), enforced by the room — a
   modified client gains nothing.
 - **No motion tells.** During the active window, the public per-player mash
   counters are frozen at their round-start values (they catch up at the
   outcome). Otherwise a snapshot recorder could pair "X's counter ticked up"
-  with "the hinder force moved" in the same 40 ms window and unmask X.
+  with "the hinder force moved" in the same 40 ms window and infer a press.
 
-One honest caveat, because aggregates are still aggregates: in a **tiny or
-unanimous** room, headcounts alone can be revealing — if all 3 of you helped,
-everyone knows how all 3 of you voted. That's arithmetic, not a leak; with an
-office-sized crowd it disappears.
+One honest caveat, because aggregates are still aggregates: in a tiny room,
+someone watching another person press a visibly labeled button can know what
+they just did. The network, snapshots, event modules, and database still do
+not create or retain that identity link.
 
 Don't take the README's word for it:
 
@@ -472,7 +474,7 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
   hosts that don't send permissive CORS headers. Host the photo on the same
   domain as the app (drop it in `public/` and use a relative URL like
   `/assets/justin.jpg`) or on a permissive CDN. When unset, the game uses the
-  bundled art-directed Justin portrait in `public/assets/justin-avatar-v2.png`.
+  bundled art-directed Justin portrait in `public/assets/justin-avatar-v3.png`.
 
 ---
 
@@ -481,14 +483,14 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
 ```
 app/                      Next.js pages + API routes (this part runs on Vercel)
   page.tsx                landing page — join as player or boss, no room codes
-  play/page.tsx           the phone controller (side picker + MASH button)
+  play/page.tsx           the phone controller (direct HELP/HINDER controls)
   boss/page.tsx           the big-screen broadcast (stage, host controls, feed)
   api/config/route.ts     GET  level_config tuning  → read by the room at start
   api/leaderboard/route.ts GET all-time leaderboard → room + UI
   api/results/route.ts    POST match results ← the room (guarded by INTERNAL_API_SECRET)
   globals.css             Tailwind v4 theme: aluminum, memo paper, stamps
 proxy.ts                  Next 16 request proxy: security headers + the v2 multi-room hook
-components/               React UI pieces (MashButton, SidePicker, GrievanceFeed, …)
+components/               React UI pieces (DualActionPad, MashButton, GrievanceFeed, …)
 db/
   schema.ts               the Postgres tables (Drizzle) — note what's deliberately absent
   seed.ts                 writes default tuning into level_config (pnpm db:seed)

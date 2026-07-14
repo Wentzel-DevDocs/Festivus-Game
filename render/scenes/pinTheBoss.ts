@@ -20,7 +20,15 @@
 import { Container, Graphics, Text } from "pixi.js";
 import type { SceneFactory, SceneServices, SceneUpdateArgs } from "../core";
 import type { EventView } from "@/lib/game/engine/types";
-import { COLORS, makeBody, makeJustinHead, ParticleBurst, Shaker, springTo } from "../toolkit";
+import {
+  COLORS,
+  makeBody,
+  makeJointedLimb,
+  makeJustinHead,
+  ParticleBurst,
+  Shaker,
+  springTo,
+} from "../toolkit";
 import type { SpringState } from "../toolkit";
 
 const ALUMINUM_300 = 0xb8bfc6; // --color-aluminum-300 from globals.css
@@ -237,32 +245,69 @@ class OutcomeBanner {
  */
 function makeReferee(): { root: Container; arm: Container } {
   const root = new Container();
-  // Kneeling legs: a low block along the mat.
-  const legs = new Graphics().roundRect(-12, -10, 30, 12, 5).fill({ color: 0x4b535b });
+  const shadow = new Graphics().ellipse(0, 1, 25, 6).fill({ color: COLORS.void, alpha: 0.42 });
+  const rearLeg = makeJointedLimb(
+    [[-2, -14], [-13, -7], [-22, -1]],
+    { width: 8, color: 0x303943, highlight: COLORS.aluminum },
+  );
+  const leadLeg = makeJointedLimb(
+    [[4, -13], [15, -6], [23, -1]],
+    { width: 8.5, color: 0x46515b, highlight: COLORS.aluminumLight },
+  );
+  const shoes = new Graphics()
+    .roundRect(-27, -5, 14, 7, 3)
+    .fill({ color: COLORS.void })
+    .roundRect(14, -5, 15, 7, 3)
+    .fill({ color: COLORS.void });
   // Torso leans over the action.
   const torso = new Container();
   torso.position.set(0, -8);
   torso.rotation = 0.35;
-  const shirt = new Graphics().roundRect(-9, -44, 20, 40, 7).fill({ color: COLORS.aluminumLight });
+  const shirt = new Graphics()
+    .roundRect(-13, -47, 27, 43, 8)
+    .fill({ color: COLORS.void })
+    .roundRect(-11, -45, 23, 39, 7)
+    .fill({ color: COLORS.aluminumLight })
+    .poly([-10, -43, -1, -35, -2, -8, -10, -13])
+    .fill({ color: COLORS.memo, alpha: 0.45 });
   const stripes = new Graphics()
-    .rect(-5, -44, 4, 40)
+    .rect(-7, -44, 4, 37)
     .fill({ color: 0x33393f })
-    .rect(3, -44, 4, 40)
-    .fill({ color: 0x33393f });
-  const head = new Graphics().circle(1, -52, 9).fill({ color: COLORS.skin });
-  torso.addChild(shirt, stripes, head);
+    .rect(1, -44, 4, 37)
+    .fill({ color: 0x33393f })
+    .rect(9, -39, 2.5, 30)
+    .fill({ color: 0x33393f })
+    .rect(-10, -15, 21, 3)
+    .fill({ color: COLORS.grievance, alpha: 0.72 });
+  const bracedArm = makeJointedLimb(
+    [[-8, -37], [-18, -23], [-20, -5]],
+    { width: 7, color: COLORS.memo, endColor: COLORS.skin, highlight: COLORS.aluminumLight },
+  );
+  const head = new Graphics()
+    .ellipse(0, -57, 12, 13)
+    .fill({ color: COLORS.void })
+    .ellipse(0, -57, 10, 11)
+    .fill({ color: COLORS.skin })
+    .ellipse(-3, -60, 5, 4)
+    .fill({ color: COLORS.skinLight, alpha: 0.36 })
+    .arc(0, -57, 10.2, Math.PI * 1.03, Math.PI * 1.92)
+    .stroke({ width: 3, color: 0x362923 })
+    .circle(3.2, -57.5, 1.1)
+    .fill({ color: COLORS.void })
+    .moveTo(2, -53)
+    .lineTo(6, -53.5)
+    .stroke({ width: 1.2, color: 0x704633, alpha: 0.72 });
+  torso.addChild(bracedArm, shirt, stripes, head);
   // The slapping arm hangs off the shoulder; update() rotates it.
   const arm = new Container();
-  arm.position.set(6, -40);
-  const limb = new Graphics()
-    .moveTo(0, 0)
-    .lineTo(24, 14)
-    .stroke({ width: 6, color: COLORS.aluminumLight })
-    .circle(26, 16, 5)
-    .fill({ color: COLORS.skin });
+  arm.position.set(8, -39);
+  const limb = makeJointedLimb(
+    [[0, 0], [18, 8], [28, 17]],
+    { width: 7.5, color: COLORS.memo, endColor: COLORS.skin, highlight: COLORS.aluminumLight },
+  );
   arm.addChild(limb);
   torso.addChild(arm);
-  root.addChild(legs, torso);
+  root.addChild(shadow, rearLeg, leadLeg, shoes, torso);
   return { root, arm };
 }
 
@@ -333,6 +378,9 @@ export const pinTheBossScene: SceneFactory = () => {
     // makeBody draws a shirt hanging DOWNWARD from (0,0). Rotating it +90°
     // (clockwise, in Pixi's y-down world) lays it along our −x axis.
     const body = makeBody(30, bodyLen - 18);
+    // Widen across the plank only: local y (the hinge-to-head length) remains
+    // untouched, preserving pin travel and the feet origin.
+    body.scale.x = 1.25;
     body.rotation = Math.PI / 2;
     body.position.set(-12, 0);
 
@@ -352,7 +400,8 @@ export const pinTheBossScene: SceneFactory = () => {
     hingeX = matX + rx * 0.45; // hinge on the RIGHT side of the mat
     hingeY = matY - 4;
     const bodyLen = rx * 0.85;
-    const headSize = clamp(rx * 0.34, 34, 64);
+    const baseHeadSize = clamp(rx * 0.34, 34, 64);
+    const headSize = baseHeadSize * 1.25;
     headDist = 12 + (bodyLen - 18) + headSize * 0.42;
 
     // The wrestling mat: memo-paper colored, grievance-red border.

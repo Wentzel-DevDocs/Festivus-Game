@@ -22,7 +22,7 @@ export const GAME_CONFIG = {
    * URL can still replace it for a specific company's actual boss.
    */
   JUSTIN_PHOTO_URL:
-    process.env.NEXT_PUBLIC_JUSTIN_PHOTO_URL || "/assets/justin-avatar-v2.png",
+    process.env.NEXT_PUBLIC_JUSTIN_PHOTO_URL || "/assets/justin-avatar-v3.png",
 
   /**
    * v1 uses ONE shared room: everyone who opens the site plays together.
