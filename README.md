@@ -185,7 +185,7 @@ just need a connection string.)
    | `INTERNAL_API_SECRET`          | a random secret — generate with `openssl rand -hex 24`             |
    | `APP_BASE_URL`                 | your Vercel URL, e.g. `https://feats.example.com`                  |
    | `NEXT_PUBLIC_GAME_SERVER_URL`  | your room server URL (from part c), e.g. `https://festivus-room.up.railway.app` |
-   | `NEXT_PUBLIC_JUSTIN_PHOTO_URL` | *(optional)* URL of the boss's face photo                          |
+   | `NEXT_PUBLIC_JUSTIN_PHOTO_URL` | *(optional)* URL overriding the bundled Justin character portrait  |
    | `NEXT_PUBLIC_BOSS_NAME`        | *(optional)* what everyone calls the protagonist (default: Justin) |
 
 ### (c) The room server — the live room
@@ -471,8 +471,8 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
   loads it as a texture, and browsers block canvas access to images from
   hosts that don't send permissive CORS headers. Host the photo on the same
   domain as the app (drop it in `public/` and use a relative URL like
-  `/assets/justin.jpg`) or on a permissive CDN. There's a placeholder at
-  `public/assets/justin-placeholder.svg` to test the wiring.
+  `/assets/justin.jpg`) or on a permissive CDN. When unset, the game uses the
+  bundled art-directed Justin portrait in `public/assets/justin-avatar-v2.png`.
 
 ---
 

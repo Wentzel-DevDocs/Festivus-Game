@@ -1,116 +1,616 @@
 @import "tailwindcss";
 
 /*
- * Festivus theme: deadpan corporate memo meets holiday-party chaos.
- * Tailwind v4 reads design tokens from this @theme block — these become
- * utilities like `bg-aluminum-900`, `text-grievance`, `font-display`, etc.
+ * ALUMINUM CITADEL
+ * Original dark-action-game presentation with Festivus' office satire left
+ * intact. Parchment belongs to grievances; steel, stone and ember own the HUD.
  */
 @theme {
-  /* Brushed-aluminum greys (dark stage → light highlights) */
-  --color-aluminum-950: #101214;
-  --color-aluminum-900: #16191c;
-  --color-aluminum-800: #23272b;
-  --color-aluminum-700: #33393f;
-  --color-aluminum-600: #4b535b;
-  --color-aluminum-500: #6b747d;
-  --color-aluminum-400: #929ba3;
-  --color-aluminum-300: #b8bfc6;
-  --color-aluminum-200: #d4d9dd;
-  --color-aluminum-100: #e8ebed;
+  --color-aluminum-950: #070a0f;
+  --color-aluminum-900: #0d1219;
+  --color-aluminum-800: #151d27;
+  --color-aluminum-700: #24303b;
+  --color-aluminum-600: #33404b;
+  --color-aluminum-500: #5d6a75;
+  --color-aluminum-400: #87939e;
+  --color-aluminum-300: #aebbc4;
+  --color-aluminum-200: #d6dde1;
+  --color-aluminum-100: #f4f0e7;
 
-  /* Cool off-white memo paper */
-  --color-memo: #f4f2ec;
-  --color-memo-line: #d9d4c7;
+  --color-memo: #eee6d3;
+  --color-memo-line: #c9bda3;
+  --color-grievance: #d74747;
+  --color-support: #43c77a;
+  --color-grease: #e8a941;
+  --color-pool: #33a8c7;
 
-  /* Faction + accent colors */
-  --color-grievance: #c62f2f; /* grievance red */
-  --color-support: #3f9142;   /* support green */
-  --color-grease: #d9a514;    /* grease yellow */
-  --color-pool: #2e7fb8;      /* swim-sprint water */
-
-  /* Type: condensed uppercase headers + monospace data */
-  --font-display: "Arial Narrow", "Helvetica Neue", "Roboto Condensed", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
+  --font-display: "Palatino Linotype", "Book Antiqua", Georgia, ui-serif, serif;
+  --font-sans: "Avenir Next", Avenir, Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
 }
-
-/* ── Base ─────────────────────────────────────────────────────────────────── */
 
 html,
 body {
-  height: 100%;
-  background: var(--color-aluminum-950);
+  min-height: 100%;
+  background: #070a0f;
   color: var(--color-aluminum-100);
-  /* Phones are controllers: never let double-tap zoom eat mash taps. */
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Visible keyboard focus everywhere (accessibility requirement). */
+body {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 50% -20%, rgba(174, 187, 196, 0.14), transparent 42%),
+    radial-gradient(circle at 8% 45%, rgba(215, 71, 71, 0.09), transparent 32%),
+    radial-gradient(circle at 92% 70%, rgba(232, 169, 65, 0.06), transparent 34%),
+    linear-gradient(155deg, #090d13 0%, #070a0f 55%, #0b0d12 100%);
+  font-family: var(--font-sans);
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  opacity: 0.12;
+  background:
+    linear-gradient(180deg, rgba(7, 10, 15, 0.25), rgba(7, 10, 15, 0.94)),
+    url("/assets/festivus-arena.jpg") center top / cover no-repeat;
+  filter: saturate(0.72);
+}
+
+body::after {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  opacity: 0.14;
+  background-image:
+    repeating-linear-gradient(107deg, transparent 0 3px, rgba(255, 255, 255, 0.025) 4px),
+    repeating-linear-gradient(17deg, transparent 0 7px, rgba(0, 0, 0, 0.06) 8px);
+  mix-blend-mode: soft-light;
+}
+
+::selection {
+  background: rgba(232, 169, 65, 0.28);
+  color: #fff;
+}
+
 :focus-visible {
   outline: 3px solid var(--color-grease);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
-/* ── Memo panel: off-white card with faint horizontal ruled lines ─────────── */
-
-.memo-panel {
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0,
-      transparent 27px,
-      var(--color-memo-line) 27px,
-      var(--color-memo-line) 28px
-    ),
-    var(--color-memo);
-  color: var(--color-aluminum-900);
-  border: 1px solid var(--color-memo-line);
-  border-radius: 4px;
+button,
+input,
+textarea {
+  font: inherit;
 }
 
-/* ── Brushed aluminum surface (subtle vertical grain) ─────────────────────── */
-
-.aluminum-panel {
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.025) 0px,
-      rgba(255, 255, 255, 0.025) 1px,
-      transparent 1px,
-      transparent 3px
-    ),
-    linear-gradient(180deg, var(--color-aluminum-700), var(--color-aluminum-800));
-  border: 1px solid var(--color-aluminum-600);
-  border-radius: 6px;
+button {
+  cursor: pointer;
 }
 
-/* ── "MANDATORY ATTENDANCE" rubber stamp ──────────────────────────────────── */
-
-.stamp {
-  display: inline-block;
-  padding: 0.15em 0.5em;
-  border: 3px double var(--color-grievance);
-  border-radius: 3px;
-  color: var(--color-grievance);
-  font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  transform: rotate(-6deg);
-  opacity: 0.85;
-  user-select: none;
-}
-
-/* ── Condensed uppercase display headers ──────────────────────────────────── */
+/* ── Typography + HUD labels ─────────────────────────────────────────── */
 
 .display-header {
   font-family: var(--font-display);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.075em;
+  text-wrap: balance;
 }
 
-/* ── Motion: shake + pop, disabled under prefers-reduced-motion ───────────── */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-grease);
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-sigil {
+  position: relative;
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(174, 187, 196, 0.45);
+  background: radial-gradient(circle, #29343e 0%, #10161d 70%);
+  color: var(--color-grease);
+  box-shadow: inset 0 0 0 3px #0a0e13, 0 0 26px rgba(232, 169, 65, 0.12);
+  clip-path: polygon(50% 0, 90% 18%, 100% 62%, 72% 100%, 28% 100%, 0 62%, 10% 18%);
+}
+
+.brand-sigil::before {
+  width: 3px;
+  height: 1.55rem;
+  border-radius: 999px;
+  content: "";
+  background: linear-gradient(90deg, #8c969d, #f4f0e7 48%, #69747d);
+  box-shadow: 0 0 10px rgba(244, 240, 231, 0.55);
+}
+
+/* ── Forged surfaces ─────────────────────────────────────────────────── */
+
+.aluminum-panel,
+.forge-panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(135, 147, 158, 0.34);
+  border-radius: 12px;
+  background:
+    linear-gradient(110deg, transparent 0 38%, rgba(255, 255, 255, 0.025) 50%, transparent 62%),
+    linear-gradient(180deg, rgba(29, 39, 50, 0.96), rgba(10, 15, 21, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.75),
+    0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+.forge-panel::before,
+.aluminum-panel::before {
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(174, 187, 196, 0.08);
+  border-radius: 8px;
+  pointer-events: none;
+  content: "";
+}
+
+.memo-panel {
+  position: relative;
+  border: 1px solid #c9bda3;
+  border-radius: 8px;
+  color: #15191e;
+  background:
+    linear-gradient(100deg, rgba(109, 43, 34, 0.05), transparent 22%),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 27px, rgba(140, 116, 82, 0.2) 27px, rgba(140, 116, 82, 0.2) 28px),
+    #eee6d3;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32), inset 0 0 50px rgba(97, 71, 38, 0.07);
+}
+
+.hud-chip {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(135, 147, 158, 0.3);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  background: rgba(7, 10, 15, 0.78);
+  color: var(--color-aluminum-300);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  backdrop-filter: blur(12px);
+}
+
+.hud-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(232, 169, 65, 0.55), transparent);
+}
+
+/* ── Shared game stage ───────────────────────────────────────────────── */
+
+.game-stage {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(174, 187, 196, 0.42);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(7, 10, 15, 0.14), rgba(7, 10, 15, 0.5)),
+    url("/assets/festivus-arena.jpg") center 48% / cover no-repeat;
+  box-shadow:
+    inset 0 0 70px rgba(0, 0, 0, 0.55),
+    0 0 0 4px rgba(7, 10, 15, 0.7),
+    0 24px 70px rgba(0, 0, 0, 0.45),
+    0 0 42px rgba(123, 148, 169, 0.08);
+}
+
+.game-stage::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  content: "";
+  box-shadow: inset 0 0 55px rgba(0, 0, 0, 0.48);
+}
+
+.game-stage canvas {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.landing-arena {
+  background:
+    linear-gradient(90deg, rgba(7, 10, 15, 0.46), rgba(7, 10, 15, 0.92)),
+    url("/assets/festivus-arena.jpg") center / cover no-repeat;
+}
+
+.landing-hero,
+.landing-entry {
+  min-width: 0;
+}
+
+.landing-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.landing-entry {
+  align-self: stretch;
+}
+
+.player-stage {
+  height: clamp(174px, 28dvh, 236px);
+  pointer-events: none;
+}
+
+.boss-stage {
+  height: 52vh;
+  min-height: 360px;
+}
+
+.stage-frame::before,
+.stage-frame::after {
+  position: absolute;
+  z-index: 4;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-color: rgba(232, 169, 65, 0.58);
+  pointer-events: none;
+  content: "";
+}
+
+.stage-frame::before {
+  top: 8px;
+  left: 8px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+  border-radius: 6px 0 0;
+}
+
+.stage-frame::after {
+  right: 8px;
+  bottom: 8px;
+  border-right: 1px solid;
+  border-bottom: 1px solid;
+  border-radius: 0 0 6px;
+}
+
+.stage-chrome {
+  text-shadow: 0 1px 4px #000;
+}
+
+.live-chip {
+  color: var(--color-aluminum-100);
+}
+
+.live-beacon {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--color-grievance);
+  box-shadow: 0 0 12px rgba(215, 71, 71, 0.9);
+  animation: live-beacon-pulse 1.4s ease-out infinite;
+}
+
+.status-rune {
+  display: inline-block;
+  width: 2.1rem;
+  height: 0.25rem;
+  transform: skewX(-24deg);
+  border: 1px solid rgba(135, 147, 158, 0.28);
+  background: rgba(7, 10, 15, 0.9);
+}
+
+.status-rune--active {
+  border-color: rgba(232, 169, 65, 0.7);
+  background: var(--color-grease);
+  box-shadow: 0 0 14px rgba(232, 169, 65, 0.42);
+}
+
+.grievance-seal {
+  box-shadow:
+    inset 0 0 80px rgba(215, 71, 71, 0.045),
+    0 28px 90px rgba(0, 0, 0, 0.68),
+    0 0 50px rgba(215, 71, 71, 0.08);
+}
+
+.results-overlay {
+  scrollbar-color: var(--color-aluminum-600) transparent;
+}
+
+.join-card {
+  transition: padding 240ms ease, border-color 240ms ease;
+}
+
+.join-card--priority {
+  border-color: rgba(232, 169, 65, 0.44);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 20px 50px rgba(0, 0, 0, 0.34),
+    0 0 30px rgba(232, 169, 65, 0.08);
+}
+
+/* The broadcast is a display surface, not a centered web card. Element-level
+   canvas resizing in render/core.tsx keeps the renderer in lockstep with this
+   flexible frame as rails, host roles, and viewport orientations change. */
+.broadcast-stage-frame {
+  contain: layout paint;
+}
+
+.broadcast-stage {
+  min-width: 0;
+}
+
+.broadcast-rail {
+  scrollbar-color: var(--color-aluminum-600) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.broadcast-header-actions button {
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.broadcast-header-actions button:not(:disabled):hover {
+  border-color: rgba(232, 169, 65, 0.58);
+  color: var(--color-grease);
+}
+
+.broadcast-join-url {
+  font-size: clamp(1rem, 1.4vw, 1.5rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.progress-rail {
+  position: relative;
+  height: 0.62rem;
+  overflow: hidden;
+  border: 1px solid rgba(174, 187, 196, 0.3);
+  border-radius: 999px;
+  background: #070a0f;
+  box-shadow: inset 0 2px 5px #000;
+}
+
+.progress-rail > div {
+  position: relative;
+  background: linear-gradient(90deg, #23714a, #43c77a 60%, #c5f4d8);
+  box-shadow: 0 0 14px rgba(67, 199, 122, 0.65);
+}
+
+/* ── Player controls ─────────────────────────────────────────────────── */
+
+.controller-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.controller-shell--event {
+  width: 100%;
+}
+
+.controller-shell::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  background:
+    radial-gradient(circle at 50% 12%, rgba(73, 199, 220, 0.045), transparent 30%),
+    linear-gradient(180deg, transparent 70%, rgba(215, 71, 71, 0.025));
+}
+
+.controller-header {
+  position: relative;
+  z-index: 20;
+}
+
+.controller-identity > .forge-panel {
+  min-height: 3.25rem;
+}
+
+.controller-audio-toggle {
+  flex: 0 0 auto;
+  border-radius: 10px;
+}
+
+.controller-connection--online > span:first-child {
+  box-shadow: 0 0 10px rgba(67, 199, 122, 0.72);
+}
+
+.controller-connection--pending > span:first-child {
+  box-shadow: 0 0 10px rgba(232, 169, 65, 0.65);
+}
+
+.controller-connection--offline > span:first-child {
+  box-shadow: 0 0 10px rgba(215, 71, 71, 0.75);
+}
+
+.controller-ambient-stage {
+  min-height: 9rem;
+  border-radius: 14px;
+}
+
+.controller-ambient-canvas {
+  min-height: 100%;
+  border-color: rgba(135, 147, 158, 0.4);
+}
+
+.controller-stage-copy {
+  background: linear-gradient(180deg, transparent, rgba(7, 10, 15, 0.96) 48%);
+  text-shadow: 0 2px 8px #000;
+}
+
+.controller-stage-title {
+  text-wrap: balance;
+}
+
+.controller-lobby-panel,
+.controller-grievance-composer,
+.controller-outcome-card {
+  border-color: rgba(135, 147, 158, 0.38);
+}
+
+.controller-grievance-composer {
+  box-shadow:
+    inset 0 0 54px rgba(215, 71, 71, 0.025),
+    0 20px 48px rgba(0, 0, 0, 0.28);
+}
+
+.controller-grievance-input {
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.52);
+}
+
+.controller-grievance-input:focus {
+  border-color: rgba(232, 169, 65, 0.82);
+  outline: 2px solid rgba(232, 169, 65, 0.18);
+  outline-offset: 1px;
+}
+
+.controller-grievance-submit:not(:disabled):hover,
+.controller-grievance-submit:not(:disabled):active {
+  background: rgba(215, 71, 71, 0.14);
+  box-shadow: 0 0 28px rgba(215, 71, 71, 0.16);
+}
+
+.controller-event-stage {
+  border-color: rgba(232, 169, 65, 0.32);
+}
+
+.controller-event-grid,
+.controller-event-visual,
+.controller-event-actions {
+  min-height: 0;
+}
+
+.controller-progress-panel {
+  border-radius: 10px;
+}
+
+.controller-assignment {
+  border-color: rgba(232, 169, 65, 0.36);
+  background: rgba(7, 10, 15, 0.92);
+}
+
+.controller-outcome-card {
+  background:
+    radial-gradient(circle at 50% 0, rgba(232, 169, 65, 0.08), transparent 55%),
+    linear-gradient(180deg, rgba(29, 39, 50, 0.98), rgba(10, 15, 21, 0.98));
+}
+
+.controller-footer-ticker {
+  position: relative;
+  z-index: 10;
+}
+
+.action-plate {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(22, 30, 39, 0.96), rgba(7, 10, 15, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.action-plate::after {
+  position: absolute;
+  inset: 3px;
+  border: 1px solid currentColor;
+  border-radius: 7px;
+  opacity: 0.18;
+  pointer-events: none;
+  content: "";
+}
+
+.mash-core {
+  touch-action: none;
+  box-shadow:
+    inset 0 10px 22px rgba(255, 255, 255, 0.08),
+    inset 0 -18px 36px rgba(0, 0, 0, 0.66),
+    0 0 0 7px #0a0e13,
+    0 0 0 9px rgba(135, 147, 158, 0.48),
+    0 20px 42px rgba(0, 0, 0, 0.46),
+    0 0 38px rgba(215, 71, 71, 0.24);
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.13), transparent 24%),
+    radial-gradient(circle at 50% 55%, #9d252b 0%, #5e161c 64%, #210c0f 100%);
+}
+
+.mash-core:not([aria-disabled="true"]):active {
+  transform: scale(0.955) translateY(3px);
+  filter: brightness(1.18);
+  box-shadow:
+    inset 0 16px 30px rgba(0, 0, 0, 0.4),
+    0 0 0 7px #0a0e13,
+    0 0 0 9px rgba(232, 169, 65, 0.7),
+    0 0 52px rgba(215, 71, 71, 0.5);
+}
+
+.stamp {
+  display: inline-block;
+  user-select: none;
+  transform: rotate(-4deg);
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  padding: 0.2em 0.55em;
+  color: var(--color-grievance);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.safe-viewport {
+  --safe-page-pad: 1rem;
+  padding-top: max(var(--safe-page-pad), env(safe-area-inset-top));
+  padding-right: max(var(--safe-page-pad), env(safe-area-inset-right));
+  padding-bottom: max(var(--safe-page-pad), env(safe-area-inset-bottom));
+  padding-left: max(var(--safe-page-pad), env(safe-area-inset-left));
+}
+
+.controller-shell {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+}
+
+.broadcast-shell {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+}
+
+/* ── Motion ──────────────────────────────────────────────────────────── */
 
 @keyframes screen-shake {
   0%, 100% { transform: translate(0, 0); }
@@ -120,19 +620,475 @@ body {
   80% { transform: translate(3px, 4px); }
 }
 
-.shake {
-  animation: screen-shake 0.35s linear;
-}
+.shake { animation: screen-shake 0.35s linear; }
 
 @keyframes ticker-scroll {
   from { transform: translateY(0); }
   to { transform: translateY(-50%); }
 }
 
+@keyframes ember-pulse {
+  0%, 100% { box-shadow: 0 0 16px rgba(232, 169, 65, 0.16); }
+  50% { box-shadow: 0 0 30px rgba(232, 169, 65, 0.34); }
+}
+
+.ember-pulse { animation: ember-pulse 2.4s ease-in-out infinite; }
+
+@keyframes live-beacon-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(215, 71, 71, 0.7); }
+  75%, 100% { box-shadow: 0 0 0 8px rgba(215, 71, 71, 0); }
+}
+
+@media (min-width: 640px) {
+  .broadcast-shell {
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+}
+
+@media (min-width: 768px) {
+  .safe-viewport {
+    --safe-page-pad: 2rem;
+  }
+
+  .landing-hero,
+  .landing-entry {
+    min-height: min(760px, 78dvh);
+  }
+
+  .controller-shell--event {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .controller-phase-main--event {
+    display: flex;
+    min-height: 0;
+  }
+
+  .controller-phase-main--event > .controller-event-grid {
+    min-height: 0;
+    flex: 1;
+    align-items: stretch;
+  }
+
+  .controller-event-visual {
+    height: auto;
+    align-self: center;
+  }
+
+  .controller-event-stage {
+    height: auto;
+    min-height: 0;
+    flex: none;
+    aspect-ratio: 16 / 10;
+  }
+
+  .controller-event-actions .mash-core {
+    width: clamp(176px, 25vw, 224px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .boss-stage {
+    height: min(66vh, 760px);
+  }
+
+  .broadcast-shell {
+    padding-top: max(1.25rem, env(safe-area-inset-top));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+  }
+}
+
+/* A 1024px tablet has enough room for a useful rail, but not a fixed 310px
+   rail. This keeps the arena close to a cinematic aspect instead of turning
+   it into a tall slot. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .broadcast-body {
+    grid-template-columns: minmax(0, 1fr) clamp(200px, 20vw, 230px);
+  }
+
+  .broadcast-header {
+    grid-template-columns: minmax(220px, auto) minmax(240px, 1fr) auto;
+  }
+
+  .broadcast-stamp {
+    display: none;
+  }
+
+  .broadcast-join-card {
+    padding: 0.75rem;
+  }
+}
+
+@media (max-height: 700px) and (orientation: portrait) {
+  .player-stage { height: clamp(156px, 24dvh, 184px); }
+
+  .controller-shell {
+    gap: 0.5rem;
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+  }
+
+  .controller-event-actions {
+    gap: 0.5rem;
+  }
+
+  .controller-shell--event {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .controller-header--event .brand-sigil {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .controller-header--event .controller-identity > .forge-panel {
+    min-height: 2.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .controller-header--event .controller-identity > .forge-panel .eyebrow {
+    display: none;
+  }
+
+  .controller-phase-main--event {
+    display: flex;
+    min-height: 0;
+  }
+
+  .controller-phase-main--event > .controller-event-grid {
+    min-height: 0;
+    flex: 1;
+    gap: 0.5rem;
+  }
+
+  .controller-event-stage {
+    min-height: 156px;
+  }
+
+  .controller-event-actions .mash-core {
+    width: 168px;
+  }
+}
+
+/* Taller portrait phones have room to make the shared character materially
+   larger without displacing the mash control or operations ticker. */
+@media (orientation: portrait) and (max-width: 767px) and (min-height: 760px) {
+  .controller-shell--event .player-stage {
+    height: clamp(260px, 36dvh, 310px);
+  }
+}
+
+/* Short landscape is a first-class projection/controller mode, not a rotated
+   portrait page. Both surfaces lock to the visual viewport and split into a
+   two-station layout with zero document scrolling. */
+@media (orientation: landscape) and (max-height: 520px) and (min-width: 640px) {
+  .safe-viewport {
+    --safe-page-pad: 0.5rem;
+  }
+
+  .landing-shell {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .landing-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+    gap: 0.5rem;
+  }
+
+  .landing-hero,
+  .landing-entry {
+    min-height: 0;
+    max-height: calc(100dvh - 1rem);
+    padding: 1rem;
+  }
+
+  .landing-brand {
+    margin-bottom: 0.5rem;
+  }
+
+  .landing-hero h1 {
+    margin-top: 0.35rem;
+    font-size: clamp(2.25rem, 6.4vw, 3.8rem);
+  }
+
+  .landing-copy {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+
+  .landing-chips {
+    margin-top: 0.75rem;
+  }
+
+  .landing-entry > div:first-child {
+    margin-bottom: 0.75rem;
+  }
+
+  .landing-entry input,
+  .landing-entry button {
+    min-height: 2.75rem;
+  }
+
+  .landing-entry .hud-rule {
+    margin-block: 0.875rem;
+  }
+
+  .landing-entry {
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .broadcast-shell {
+    height: 100dvh;
+    min-height: 0;
+    gap: 0.5rem;
+    overflow: hidden;
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+  }
+
+  .broadcast-header {
+    display: grid;
+    grid-template-columns: minmax(170px, 0.9fr) minmax(220px, 1fr) auto;
+    gap: 0.5rem;
+    padding: 0.375rem;
+  }
+
+  .broadcast-heading {
+    flex-wrap: nowrap;
+  }
+
+  .broadcast-brand-lockup {
+    gap: 0.5rem;
+  }
+
+  .broadcast-brand-lockup .brand-sigil {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .broadcast-heading h1 {
+    font-size: 0.82rem;
+  }
+
+  .broadcast-stamp {
+    display: none;
+  }
+
+  .broadcast-phase > .forge-panel {
+    min-height: 2.5rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .broadcast-phase .eyebrow {
+    display: none;
+  }
+
+  .broadcast-phase h2 {
+    font-size: 0.8rem;
+  }
+
+  .broadcast-phase .ember-pulse {
+    min-width: 2.4rem;
+    font-size: 1rem;
+  }
+
+  .broadcast-header-actions button {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+
+  .broadcast-body {
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 26vw);
+    gap: 0.5rem;
+    overflow: hidden;
+  }
+
+  .broadcast-primary {
+    grid-template-rows: minmax(0, 1fr) 3rem;
+    gap: 0.5rem;
+  }
+
+  .broadcast-stage {
+    min-height: 0;
+  }
+
+  .broadcast-stage-chrome .hud-chip:nth-child(2),
+  .broadcast-stage-chrome > div:last-child .hud-chip:last-child {
+    display: none;
+  }
+
+  .broadcast-operator-row {
+    height: 3rem;
+    min-height: 3rem;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow: hidden;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .broadcast-operator-row button {
+    min-height: 2.25rem;
+    flex: 0 0 auto;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .broadcast-operator-row p {
+    margin-top: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .broadcast-operator-status > div > p:last-child {
+    display: none;
+  }
+
+  .broadcast-rail {
+    gap: 0.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .broadcast-join-card {
+    padding: 0.625rem;
+  }
+
+  .broadcast-join-card p:not(.broadcast-join-url) {
+    margin-top: 0.35rem;
+    font-size: 0.68rem;
+    line-height: 1rem;
+  }
+
+  .broadcast-join-url {
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+    line-height: 1rem;
+  }
+
+  .broadcast-join-card .hud-rule {
+    margin-block: 0.4rem;
+  }
+
+  .broadcast-footer {
+    display: none;
+  }
+
+  .controller-shell--event {
+    height: 100dvh;
+    min-height: 0;
+    gap: 0.375rem;
+    overflow: hidden;
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+  }
+
+  .controller-header--event {
+    min-height: 2.75rem;
+  }
+
+  .controller-header--event .brand-sigil {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .controller-header--event .controller-identity > .forge-panel {
+    min-height: 2.5rem;
+    padding: 0.2rem 0.5rem;
+  }
+
+  .controller-header--event > .controller-identity > .eyebrow,
+  .controller-header--event .controller-identity > .forge-panel .eyebrow {
+    display: none;
+  }
+
+  .controller-header--event .controller-identity > .forge-panel h2 {
+    font-size: 0.82rem;
+  }
+
+  .controller-header--event .controller-audio-toggle {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+
+  .controller-phase-main--event {
+    display: flex;
+    min-height: 0;
+  }
+
+  .controller-event-grid {
+    min-height: 0;
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .controller-event-visual {
+    height: 100%;
+    gap: 0.375rem;
+  }
+
+  .controller-event-stage {
+    height: auto;
+    min-height: 0;
+    flex: 1;
+    aspect-ratio: auto;
+  }
+
+  .controller-progress-panel {
+    height: 1.5rem;
+    padding: 0.35rem 0.75rem;
+  }
+
+  .controller-progress-panel > div:first-child {
+    display: none;
+  }
+
+  .controller-event-actions {
+    height: 100%;
+    gap: 0.375rem;
+  }
+
+  .controller-event-actions .mash-core {
+    width: 168px;
+  }
+
+  .controller-event-actions .action-plate {
+    min-height: 3.5rem;
+    padding-block: 0.5rem;
+  }
+
+  .controller-footer-ticker--event aside {
+    height: 2rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
+    scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

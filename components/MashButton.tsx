@@ -162,10 +162,10 @@ export default function MashButton({ enabled, onTap, label }: MashButtonProps) {
 
   // Three visual states, in priority order: disabled → overheated → ready.
   const stateClasses = !enabled
-    ? "bg-aluminum-800 text-aluminum-500"
+    ? "mash-core text-aluminum-400 opacity-55"
     : locked
-      ? "bg-aluminum-700 text-grease cursor-not-allowed"
-      : "bg-grievance text-white active:scale-95";
+      ? "mash-core text-grease cursor-not-allowed saturate-50"
+      : "mash-core text-white";
 
   return (
     <button
@@ -185,7 +185,7 @@ export default function MashButton({ enabled, onTap, label }: MashButtonProps) {
       onClick={(e) => {
         if (e.detail === 0) handleTap();
       }}
-      className={`relative aspect-square w-[min(64vw,240px)] min-w-[180px] select-none rounded-full font-display uppercase tracking-wide transition-transform duration-75 ${stateClasses}`}
+      className={`relative aspect-square w-[clamp(168px,50vw,214px)] self-center select-none rounded-full font-display uppercase tracking-wide transition-all duration-75 ${stateClasses}`}
     >
       {/* The overheat ring, drawn around the button's edge. Decorative for
           screen readers (the lock state is announced via the text below). */}
@@ -200,8 +200,8 @@ export default function MashButton({ enabled, onTap, label }: MashButtonProps) {
           cy="50"
           r={RING_RADIUS}
           fill="none"
-          stroke="rgba(0,0,0,0.35)"
-          strokeWidth="5"
+          stroke="rgba(7,10,15,0.82)"
+          strokeWidth="4"
         />
         {/* Fill (grows with heat, shifts color) */}
         <circle
@@ -210,7 +210,7 @@ export default function MashButton({ enabled, onTap, label }: MashButtonProps) {
           r={RING_RADIUS}
           fill="none"
           stroke={heatColor}
-          strokeWidth="5"
+          strokeWidth="4"
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={circumference * (1 - heat)}
@@ -220,16 +220,26 @@ export default function MashButton({ enabled, onTap, label }: MashButtonProps) {
       {/* Button copy for each of the three states. */}
       {locked ? (
         <span className="flex flex-col items-center gap-1 px-4">
-          <span className="text-xl leading-tight">Overheated</span>
-          <span className="text-sm tracking-widest">Pace yourself</span>
+          <span className="eyebrow text-grease">Core overheated</span>
+          <span className="display-header text-xl leading-tight">Recover</span>
+          <span className="font-mono text-[10px] tracking-widest text-aluminum-300">
+            Pace yourself
+          </span>
         </span>
       ) : enabled ? (
-        <span className="text-4xl">{label ?? "Mash"}</span>
+        <span className="flex flex-col items-center">
+          <span className="eyebrow text-aluminum-200">Feats input</span>
+          <span className="display-header text-4xl">{label ?? "Mash"}</span>
+          <span className="font-mono text-[9px] tracking-[0.2em] text-aluminum-300">
+            Strike the seal
+          </span>
+        </span>
       ) : (
         <span className="flex flex-col items-center gap-1 px-4">
-          <span className="text-3xl">{label ?? "Mash"}</span>
-          <span className="text-xs normal-case tracking-normal">
-            pick a side first
+          <span className="eyebrow text-aluminum-400">Input sealed</span>
+          <span className="display-header text-3xl">{label ?? "Mash"}</span>
+          <span className="font-mono text-[10px] normal-case tracking-normal text-aluminum-400">
+            choose a side first
           </span>
         </span>
       )}

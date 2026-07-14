@@ -19,11 +19,11 @@ import Stamp from "@/components/Stamp";
 
 /** The five quick rules, verbatim — the whole game in one memo. */
 const QUICK_RULES = [
-  "Each round, secretly pick a side — help Justin or hinder him",
-  "Mash to pump your side; pace yourself or you overheat",
-  "The team's net effort decides how far Justin gets",
-  "Hardest masher tops the leaderboard — your side stays secret",
-  "Pin the Boss is double points: it crowns the champion and decides whether Justin's beloved or greased",
+  "Secretly choose whether this release helps Justin or hinders him",
+  "Mash to ship force; pace yourself or the controller overheats",
+  "Aggregate effort moves the shared arena—individual allegiance never leaves your phone",
+  "Raw output drives the leaderboard, regardless of which side you picked",
+  "The final feat is a 2× production deploy that crowns the champion",
 ];
 
 export default function LandingPage() {
@@ -54,84 +54,96 @@ export default function LandingPage() {
   }
 
   return (
-    <main className="min-h-dvh flex flex-col items-center justify-center p-4">
-      {/* ── The memo card ──────────────────────────────────────────────── */}
-      {/* `relative` so the stamp can sit absolutely over the top corner.  */}
-      <div className="relative w-full max-w-md memo-panel p-6 pt-8">
-        {/* Rubber stamp, slapped over the corner like a real memo. */}
-        <div className="absolute -top-3 -right-2">
-          <Stamp>MANDATORY ATTENDANCE</Stamp>
+    <main className="landing-shell safe-viewport mx-auto flex min-h-dvh w-full max-w-[1920px] items-center p-4 md:p-8">
+      <section className="landing-grid grid w-full items-center gap-4 md:gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="landing-hero relative overflow-hidden rounded-2xl border border-aluminum-600/50 bg-aluminum-950/70 p-5 shadow-2xl backdrop-blur-sm md:p-10">
+          <div className="landing-arena absolute inset-0 -z-10" />
+          <div className="landing-brand brand-lockup mb-6 md:mb-10">
+            <span className="brand-sigil" aria-hidden="true" />
+            <div>
+              <p className="eyebrow">The Aluminum Citadel awaits</p>
+              <p className="font-mono text-xs text-aluminum-400">Live multiplayer · one shared arena</p>
+            </div>
+          </div>
+
+          <p className="eyebrow">A live all-hands incident in five acts</p>
+          <h1 className="display-header mt-3 max-w-3xl text-4xl leading-[0.96] text-aluminum-100 md:text-7xl">
+            Justin&apos;s
+            <span className="block text-grease">Feats of Strength</span>
+          </h1>
+          <p className="landing-copy mt-4 max-w-xl text-sm leading-6 text-aluminum-300 md:mt-5 md:text-lg md:leading-7">
+            Choose an allegiance in secret. Power the boss—or grease his downfall.
+            Every phone controls the same living arena. No install. No accounts.
+          </p>
+
+          <div className="landing-chips mt-5 flex flex-wrap gap-2 md:mt-8">
+            <span className="hud-chip">No install</span>
+            <span className="hud-chip">Anonymous sides</span>
+            <span className="hud-chip">One live arena</span>
+          </div>
         </div>
 
-        <h1 className="display-header text-3xl tracking-wide leading-tight">
-          Justin&apos;s Feats of Strength
-        </h1>
-        <p className="mt-1 text-sm text-aluminum-600 italic">
-          A Festivus for the rest of us.
-        </p>
+        <div className="landing-entry forge-panel p-4 md:p-7">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <p className="eyebrow">Enter the arena</p>
+              <h2 className="display-header mt-1 text-2xl">Choose your station</h2>
+            </div>
+            <Stamp>Mandatory</Stamp>
+          </div>
 
-        {/* ── Name + join buttons ──────────────────────────────────────── */}
-        <div className="mt-6 flex flex-col gap-3">
-          <label
-            htmlFor="player-name"
-            className="display-header text-xs tracking-widest text-aluminum-700"
-          >
-            Your name
-          </label>
-          <input
-            id="player-name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={24}
-            autoComplete="off"
-            placeholder="e.g. Frank"
-            // Pressing Enter in the field should join, same as the button.
-            onKeyDown={(e) => {
-              if (e.key === "Enter") joinAsPlayer();
-            }}
-            className="w-full rounded border border-memo-line bg-white px-3 py-3 text-lg text-aluminum-900 placeholder:text-aluminum-400"
-          />
+          <div className="flex flex-col gap-3">
+            <label htmlFor="player-name" className="eyebrow text-aluminum-400">
+              Competitor name
+            </label>
+            <input
+              id="player-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={24}
+              autoComplete="off"
+              placeholder="e.g. Frank"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") joinAsPlayer();
+              }}
+              className="min-h-14 w-full rounded-lg border border-aluminum-600 bg-aluminum-950/80 px-4 text-lg text-aluminum-100 shadow-inner outline-none placeholder:text-aluminum-500 focus:border-grease"
+            />
 
-          {/* Primary: player. Disabled until a real name is typed, because
-              the leaderboard and the roster need something to call you. */}
-          <button
-            type="button"
-            onClick={joinAsPlayer}
-            disabled={!trimmedName}
-            className="display-header w-full min-h-12 rounded bg-grievance px-4 py-3 text-lg tracking-widest text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Join as team player
-          </button>
+            <button
+              type="button"
+              onClick={joinAsPlayer}
+              disabled={!trimmedName}
+              className="display-header min-h-14 w-full rounded-lg border border-grievance bg-grievance/15 px-4 text-lg text-grievance transition-all hover:bg-grievance hover:text-white disabled:cursor-not-allowed disabled:border-aluminum-700 disabled:bg-transparent disabled:text-aluminum-600"
+            >
+              Join as player
+            </button>
 
-          {/* Secondary: the big screen. Aluminum, understated, no name. */}
-          <button
-            type="button"
-            onClick={joinAsBoss}
-            className="display-header aluminum-panel w-full min-h-12 px-4 py-3 text-lg tracking-widest text-aluminum-100"
-          >
-            Join as boss (big screen)
-          </button>
+            <button
+              type="button"
+              onClick={joinAsBoss}
+              className="display-header aluminum-panel min-h-14 w-full px-4 text-lg text-aluminum-100 transition-colors hover:border-grease/60 hover:text-grease"
+            >
+              Open boss broadcast
+            </button>
+          </div>
+
+          <div className="hud-rule my-6" />
+          <details>
+            <summary className="display-header cursor-pointer text-sm text-aluminum-300">
+              Rules of the citadel
+            </summary>
+            <ol className="mt-3 space-y-2 text-sm leading-6 text-aluminum-400">
+              {QUICK_RULES.map((rule, index) => (
+                <li key={rule} className="flex gap-3">
+                  <span className="font-mono text-grease">{String(index + 1).padStart(2, "0")}</span>
+                  <span>{rule}</span>
+                </li>
+              ))}
+            </ol>
+          </details>
         </div>
-
-        {/* ── Quick rules memo ─────────────────────────────────────────── */}
-        <div className="mt-6 border-t border-memo-line pt-4">
-          <h2 className="display-header text-sm tracking-widest text-aluminum-700">
-            Quick rules
-          </h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-aluminum-800">
-            {QUICK_RULES.map((rule) => (
-              <li key={rule}>{rule}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {/* ── Footer small print ─────────────────────────────────────────── */}
-      <p className="mt-4 max-w-md text-center text-xs text-aluminum-500">
-        Built on Festivus — Seinfeld, &ldquo;The Strike&rdquo; (S9E10, Dec 18
-        1997).
-      </p>
+      </section>
     </main>
   );
 }

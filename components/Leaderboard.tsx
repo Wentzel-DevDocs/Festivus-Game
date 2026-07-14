@@ -35,20 +35,30 @@ export default function Leaderboard({
   compact = false,
 }: LeaderboardProps) {
   const visiblePlayers = compact ? players.slice(0, 5) : players;
+  const visibleAlltime = compact ? alltime.slice(0, 3) : alltime;
   const showAlltime = alltime.length > 0;
 
   return (
     <div
-      className={`aluminum-panel font-mono ${compact ? "p-3 text-xs" : "p-4 text-sm"}`}
+      className={`forge-panel font-mono ${compact ? "p-3 text-xs" : "p-4 text-sm"}`}
     >
       {headOfHousehold && (
-        <p className="display-header mb-3 text-grease">
-          Head of Household: {headOfHousehold} — gang up accordingly.
-        </p>
+        <div className="mb-3 flex items-center gap-2 border-b border-grease/20 pb-3">
+          <span className="brand-sigil h-8 w-8 scale-75" aria-hidden="true" />
+          <p className="min-w-0">
+            <span className="eyebrow block">Head of Household</span>
+            <span className="display-header block truncate text-grease">
+              {headOfHousehold}
+            </span>
+          </p>
+        </div>
       )}
 
       {/* ── Section 1: this match ─────────────────────────────────────────── */}
-      <h3 className="display-header mb-1 text-aluminum-400">This Match</h3>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="display-header text-aluminum-200">Battle ranks</h3>
+        <span className="eyebrow">This match</span>
+      </div>
       {visiblePlayers.length === 0 ? (
         <p className="py-2 text-aluminum-500">Nobody here yet.</p>
       ) : (
@@ -66,11 +76,18 @@ export default function Leaderboard({
             {visiblePlayers.map((p, i) => (
               // Key includes the index so two guests who typed the same name
               // can't trigger React's duplicate-key warning.
-              <tr key={`${p.name}-${i}`} className="border-b border-aluminum-700/50">
-                <td className="w-8 py-1 pr-2 text-right text-aluminum-500">
-                  {i + 1}
+              <tr
+                key={`${p.name}-${i}`}
+                className={`border-b border-aluminum-700/60 ${i === 0 ? "bg-grease/5" : ""}`}
+              >
+                <td
+                  className={`w-9 py-2 pr-2 text-center font-bold ${
+                    i === 0 ? "text-grease" : "text-aluminum-500"
+                  }`}
+                >
+                  {String(i + 1).padStart(2, "0")}
                 </td>
-                <td className="py-1 pr-2">
+                <td className={`py-2 pr-2 ${i === 0 ? "text-aluminum-100" : ""}`}>
                   {p.name}
                   {/* Team chip appears ONLY during tug-of-war (team !== null).
                       A = pool blue, B = grease yellow, matching the rope. */}
@@ -86,7 +103,9 @@ export default function Leaderboard({
                     </span>
                   )}
                 </td>
-                <td className="py-1 text-right tabular-nums">{p.mashes}</td>
+                <td className={`py-2 text-right tabular-nums ${i === 0 ? "text-grease" : ""}`}>
+                  {p.mashes}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -97,7 +116,7 @@ export default function Leaderboard({
       {showAlltime && (
         <>
           <h3
-            className={`display-header mb-1 text-aluminum-400 ${
+            className={`eyebrow mb-1 ${
               compact ? "mt-3" : "mt-5 border-t border-aluminum-600 pt-3"
             }`}
           >
@@ -112,16 +131,16 @@ export default function Leaderboard({
               </tr>
             </thead>
             <tbody>
-              {alltime.map((entry, i) => (
+              {visibleAlltime.map((entry, i) => (
                 // Display names aren't unique (two "Kevin"s are inevitable);
                 // include the row index so React keys never collide.
                 <tr key={`${entry.name}-${i}`} className="border-b border-aluminum-700/50">
-                  <td className="py-1 pr-2">{entry.name}</td>
-                  <td className="py-1 pr-2 text-right tabular-nums">
+                  <td className="py-1.5 pr-2">{entry.name}</td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums">
                     {entry.totalMashes}
                     <span className="ml-1 text-aluminum-500">mashes</span>
                   </td>
-                  <td className="py-1 text-right tabular-nums">
+                  <td className="py-1.5 text-right tabular-nums">
                     {entry.wins}
                     <span className="ml-1 text-aluminum-500">wins</span>
                   </td>

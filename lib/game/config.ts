@@ -17,11 +17,12 @@ export const GAME_CONFIG = {
   BOSS_NAME: process.env.NEXT_PUBLIC_BOSS_NAME || "Justin",
 
   /**
-   * A photo of the boss's face. Empty string → the renderer draws a
-   * placeholder head. When set, the photo is cropped onto the swimmer,
-   * climber, pinned figure and the jack-in-the-box.
+   * Portrait used by every animated Justin rig. The bundled original game
+   * character keeps the default experience art-directed; a same-origin photo
+   * URL can still replace it for a specific company's actual boss.
    */
-  JUSTIN_PHOTO_URL: process.env.NEXT_PUBLIC_JUSTIN_PHOTO_URL || "",
+  JUSTIN_PHOTO_URL:
+    process.env.NEXT_PUBLIC_JUSTIN_PHOTO_URL || "/assets/justin-avatar-v2.png",
 
   /**
    * v1 uses ONE shared room: everyone who opens the site plays together.
