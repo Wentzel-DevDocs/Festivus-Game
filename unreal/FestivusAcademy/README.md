@@ -1,7 +1,6 @@
 # Festivus Academy — Unreal shell
 
-This project is an asset-free Unreal Engine 5.7 C++ shell for the Developer Academy.
-It is expected to open in Unreal Engine 5.8 as an in-place project upgrade as well.
+This project is an asset-free Unreal Engine 5.8 C++ shell for the Developer Academy.
 
 ## What already works
 
@@ -17,7 +16,7 @@ It is expected to open in Unreal Engine 5.8 as an in-place project upgrade as we
 ## Run locally
 
 1. From the repository root, run `pnpm dev:all`.
-2. Ensure Unreal Engine 5.7 or 5.8 is installed with C++ support.
+2. Ensure Unreal Engine 5.8 is installed with C++ support.
 3. Open `unreal/FestivusAcademy/FestivusAcademy.uproject`.
 4. Allow Unreal to compile the `FestivusAcademy` module.
 5. Press Play. The academy reads `http://localhost:3000` by default.
@@ -26,7 +25,7 @@ To point the shell at production, change `ApiBaseUrl` in `Config/DefaultGame.ini
 
 ```ini
 [Academy]
-ApiBaseUrl=https://festivus-game.vercel.app
+ApiBaseUrl="https://festivus-game.vercel.app"
 ```
 
 ## Why the UI is code-generated

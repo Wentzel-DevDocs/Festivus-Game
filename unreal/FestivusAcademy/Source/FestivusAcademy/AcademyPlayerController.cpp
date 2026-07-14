@@ -18,9 +18,9 @@ void AAcademyPlayerController::BeginPlay()
         AcademyHUD->AddToViewport(100);
     }
 
-    for (TActorIterator<AAcademyWorldDirector> It(GetWorld()); It; ++It)
+    const TActorIterator<AAcademyWorldDirector> WorldDirector(GetWorld());
+    if (WorldDirector)
     {
-        SetViewTarget(*It);
-        break;
+        SetViewTarget(*WorldDirector);
     }
 }

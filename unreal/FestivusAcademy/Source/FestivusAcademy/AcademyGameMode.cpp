@@ -12,12 +12,8 @@ AAcademyGameMode::AAcademyGameMode()
 
 void AAcademyGameMode::StartPlay()
 {
-    bool bHasWorldDirector = false;
-    for (TActorIterator<AAcademyWorldDirector> It(GetWorld()); It; ++It)
-    {
-        bHasWorldDirector = true;
-        break;
-    }
+    const TActorIterator<AAcademyWorldDirector> WorldDirector(GetWorld());
+    const bool bHasWorldDirector = static_cast<bool>(WorldDirector);
 
     if (!bHasWorldDirector)
     {

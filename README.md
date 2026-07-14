@@ -537,7 +537,7 @@ railway.json              Railway deploy config (runs the room server, not Next.
 scripts/
   simulate.ts             pnpm sim — headless full-match promise-checker (drives core.ts directly)
   simulate-academy.ts     pnpm academy:sim — cohort authority + source-retention proof
-unreal/FestivusAcademy/   UE 5.7 academy shell (procedural atrium + embedded rooms)
+unreal/FestivusAcademy/   UE 5.8 academy shell (procedural atrium + embedded rooms)
 public/assets/            static files (justin-placeholder.svg lives here)
 ```
 
