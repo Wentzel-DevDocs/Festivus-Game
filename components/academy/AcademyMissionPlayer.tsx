@@ -7,6 +7,10 @@ import {
   runAcademyMissionChecks,
   type AcademyCheckResult,
 } from "@/lib/academy/validation";
+import {
+  getUnrealRoomReadyHash,
+  UNREAL_ROOM_READY_HASH_PREFIX,
+} from "@/lib/academy/unrealBridge";
 import { getSavedName, saveName } from "@/lib/identity";
 
 interface StoredProgress {
@@ -109,6 +113,75 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
     setPromptDraft(saved.prompts[mission.id] ?? mission.aiWorkflow.promptTemplate);
     setHydrated(true);
   }, [room]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const parsedReadyHash = getUnrealRoomReadyHash(window.location.search);
+    if (!parsedReadyHash) return;
+    const readyHash: string = parsedReadyHash;
+    const entryToken = readyHash.slice(UNREAL_ROOM_READY_HASH_PREFIX.length);
+
+    let cancelled = false;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    let bridgeTimer = 0;
+
+    document.documentElement.dataset.unrealAcademy = "1";
+
+    function signalNativeBridge(attempt = 0) {
+      if (cancelled) return;
+      const unrealWindow = window as Window & {
+        ue?: {
+          academybridge?: {
+            ready?: (token: string) => Promise<unknown> | unknown;
+          };
+        };
+      };
+      const bridge = unrealWindow.ue?.academybridge;
+      if (typeof bridge?.ready === "function") {
+        void Promise.resolve(bridge.ready(entryToken)).catch(() => {
+          // The URL hash and native timeout remain recovery paths.
+        });
+        return;
+      }
+      if (attempt < 160) {
+        bridgeTimer = window.setTimeout(() => signalNativeBridge(attempt + 1), 50);
+      }
+    }
+
+    async function signalReadyAfterPaint() {
+      // Let the embedded page settle its type and the restored mission state,
+      // then wait through two actual paints before asking Unreal to reveal it.
+      // The hash is a CEF-compatible fallback; UE's narrow UObject bridge is
+      // the authoritative callback on macOS WKWebView.
+      try {
+        await document.fonts?.ready;
+      } catch {
+        // Font loading failure must not strand the native transition cover.
+      }
+      if (cancelled) return;
+
+      firstFrame = window.requestAnimationFrame(() => {
+        secondFrame = window.requestAnimationFrame(() => {
+          if (!cancelled && window.location.hash !== `#${readyHash}`) {
+            window.location.hash = readyHash;
+          }
+          signalNativeBridge();
+        });
+      });
+    }
+
+    void signalReadyAfterPaint();
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+      window.clearTimeout(bridgeTimer);
+      delete document.documentElement.dataset.unrealAcademy;
+    };
+  }, [hydrated, room.slug]);
 
   useEffect(() => {
     setCohortName(getSavedName());
@@ -238,7 +311,11 @@ export default function AcademyMissionPlayer({ room }: { room: AcademyRoom }) {
     (results.length > 0 && results.every((result) => result.passed));
 
   return (
-    <section className="academy-mission-shell" aria-label={`${room.title} missions`}>
+    <section
+      className="academy-mission-shell"
+      data-academy-hydrated={hydrated ? "true" : "false"}
+      aria-label={`${room.title} missions`}
+    >
       <aside className="academy-mission-rail forge-panel" aria-label="Mission map">
         <div className="p-4 md:p-5">
           <p className="eyebrow">Room progress</p>

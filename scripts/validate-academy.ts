@@ -1,4 +1,5 @@
 import { ACADEMY_CATALOG } from "../lib/academy/catalog";
+import { getUnrealRoomReadyHash } from "../lib/academy/unrealBridge";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -6,6 +7,25 @@ function assert(condition: unknown, message: string): asserts condition {
 
 assert(ACADEMY_CATALOG.schemaVersion === 1, "Unsupported academy schema version");
 assert(ACADEMY_CATALOG.rooms.length >= 4, "Expected at least four technology rooms");
+
+assert(
+  getUnrealRoomReadyHash("?unreal=1&entry=9f6b2a40-portal_01") ===
+    "academy-ready-9f6b2a40-portal_01",
+  "A valid Unreal entry token must produce the native readiness hash",
+);
+for (const search of [
+  "",
+  "?entry=web-visit",
+  "?unreal=0&entry=disabled",
+  "?unreal=1",
+  "?unreal=1&entry=unsafe%23fragment",
+  `?unreal=1&entry=${"a".repeat(129)}`,
+]) {
+  assert(
+    getUnrealRoomReadyHash(search) === null,
+    `Non-embedded or unsafe academy URL must not signal readiness: ${search}`,
+  );
+}
 
 const roomSlugs = new Set<string>();
 let previousOrder = 0;

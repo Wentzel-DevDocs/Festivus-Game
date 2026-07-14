@@ -11,12 +11,15 @@ void AAcademyPlayerController::BeginPlay()
     Super::BeginPlay();
 
     bShowMouseCursor = true;
-    SetInputMode(FInputModeUIOnly());
 
     AcademyHUD = CreateWidget<UAcademyHUDWidget>(this, UAcademyHUDWidget::StaticClass());
     if (AcademyHUD)
     {
         AcademyHUD->AddToViewport(100);
+        FInputModeUIOnly InputMode;
+        InputMode.SetWidgetToFocus(AcademyHUD->TakeWidget());
+        InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        SetInputMode(InputMode);
         UE_LOG(LogFestivusAcademy, Display, TEXT("Academy native HUD added to the player viewport."));
     }
     else

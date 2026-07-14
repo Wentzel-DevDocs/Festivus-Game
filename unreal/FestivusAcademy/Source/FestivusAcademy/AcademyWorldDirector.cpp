@@ -13,12 +13,24 @@
 #include "HAL/PlatformMisc.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Math/RotationMatrix.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UnrealClient.h"
+
+namespace
+{
+const FTransform OverviewCameraTransform(
+    FRotator(-3.5f, 0.0f, 0.0f),
+    FVector(-930.0f, 0.0f, 365.0f));
+constexpr float OverviewFOV = 66.0f;
+constexpr float PortalFocusFOV = 56.0f;
+constexpr float FocusDuration = 1.2f;
+constexpr float ReturnDuration = 0.9f;
+}
 
 AAcademyWorldDirector::AAcademyWorldDirector()
 {
@@ -116,6 +128,11 @@ AAcademyWorldDirector::AAcademyWorldDirector()
     AcademyCamera->SetRelativeLocation(FVector(-1550, 0, 445));
     AcademyCamera->SetRelativeRotation(FRotator(-3.5f, 0, 0));
     AcademyCamera->FieldOfView = 75.0f;
+    AcademyCamera->SetAutoActivate(true);
+    AcademyCamera->SetConstraintAspectRatio(false);
+    AcademyCamera->SetAspectRatio(16.0f / 9.0f);
+    AcademyCamera->bOverrideAspectRatioAxisConstraint = true;
+    AcademyCamera->SetAspectRatioAxisConstraint(EAspectRatioAxisConstraint::AspectRatio_MaintainYFOV);
 
     USkyLightComponent* SkyLight = CreateDefaultSubobject<USkyLightComponent>(TEXT("SkyLight"));
     SkyLight->SetupAttachment(SceneRoot);
@@ -145,21 +162,25 @@ AAcademyWorldDirector::AAcademyWorldDirector()
     Fog->VolumetricFogExtinctionScale = 0.65f;
     Fog->VolumetricFogDistance = 5000.0f;
 
-    UPostProcessComponent* Grade = CreateDefaultSubobject<UPostProcessComponent>(TEXT("CinematicGrade"));
-    Grade->SetupAttachment(SceneRoot);
-    Grade->bUnbound = true;
-    Grade->Settings.bOverride_BloomIntensity = true;
-    Grade->Settings.BloomIntensity = 0.75f;
-    Grade->Settings.bOverride_VignetteIntensity = true;
-    Grade->Settings.VignetteIntensity = 0.34f;
-    Grade->Settings.bOverride_AutoExposureBias = true;
-    Grade->Settings.AutoExposureBias = -0.12f;
+    CinematicGrade = CreateDefaultSubobject<UPostProcessComponent>(TEXT("CinematicGrade"));
+    CinematicGrade->SetupAttachment(SceneRoot);
+    CinematicGrade->bUnbound = true;
+    CinematicGrade->Settings.bOverride_BloomIntensity = true;
+    CinematicGrade->Settings.BloomIntensity = 0.75f;
+    CinematicGrade->Settings.bOverride_VignetteIntensity = true;
+    CinematicGrade->Settings.VignetteIntensity = 0.34f;
+    CinematicGrade->Settings.bOverride_AutoExposureBias = true;
+    CinematicGrade->Settings.AutoExposureBias = -0.12f;
+    CinematicGrade->Settings.bOverride_MotionBlurAmount = true;
+    CinematicGrade->Settings.MotionBlurAmount = 0.10f;
 }
 
 void AAcademyWorldDirector::BeginPlay()
 {
     Super::BeginPlay();
     ApplySurfaceTreatment();
+    AcademyCamera->SetActive(true);
+    SetReducedMotionEnabled(FParse::Param(FCommandLine::Get(), TEXT("AcademyReducedMotion")));
 
     if (FParse::Param(FCommandLine::Get(), TEXT("AcademyCapture")))
     {
@@ -177,30 +198,212 @@ void AAcademyWorldDirector::Tick(float DeltaSeconds)
     Super::Tick(DeltaSeconds);
 
     PresentationTime += DeltaSeconds;
-    const float ArrivalAlpha = FMath::InterpEaseOut(0.0f, 1.0f, FMath::Clamp(PresentationTime / 4.5f, 0.0f, 1.0f), 3.0f);
-    const float CameraX = FMath::Lerp(-1550.0f, -930.0f, ArrivalAlpha);
-    const float CameraY = FMath::Sin(PresentationTime * 0.18f) * 22.0f;
-    const float CameraZ = FMath::Lerp(445.0f, 365.0f, ArrivalAlpha) + FMath::Sin(PresentationTime * 0.25f) * 5.0f;
-    AcademyCamera->SetRelativeLocation(FVector(CameraX, CameraY, CameraZ));
-    AcademyCamera->FieldOfView = FMath::Lerp(75.0f, 66.0f, ArrivalAlpha);
+    switch (CameraState)
+    {
+    case ECameraState::Arrival:
+        {
+            const float ArrivalAlpha = FMath::InterpEaseOut(
+                0.0f,
+                1.0f,
+                FMath::Clamp(PresentationTime / 4.5f, 0.0f, 1.0f),
+                3.0f);
+            const float CameraX = FMath::Lerp(-1550.0f, -930.0f, ArrivalAlpha);
+            const float CameraY = bReducedMotionEnabled ? 0.0f : FMath::Sin(PresentationTime * 0.18f) * 22.0f;
+            const float CameraZ = FMath::Lerp(445.0f, 365.0f, ArrivalAlpha) +
+                (bReducedMotionEnabled ? 0.0f : FMath::Sin(PresentationTime * 0.25f) * 5.0f);
+            AcademyCamera->SetRelativeLocation(FVector(CameraX, CameraY, CameraZ));
+            AcademyCamera->SetRelativeRotation(FRotator(-3.5f, 0.0f, 0.0f));
+            AcademyCamera->SetFieldOfView(FMath::Lerp(75.0f, OverviewFOV, ArrivalAlpha));
+            if (ArrivalAlpha >= 1.0f)
+            {
+                CameraState = ECameraState::Overview;
+                OverviewIdleTime = 0.0f;
+            }
+        }
+        break;
 
+    case ECameraState::Overview:
+        {
+            OverviewIdleTime += DeltaSeconds;
+            const float DriftBlend = bReducedMotionEnabled
+                ? 0.0f
+                : FMath::Clamp(OverviewIdleTime / 1.5f, 0.0f, 1.0f);
+            const FVector BaseLocation = OverviewCameraTransform.GetLocation();
+            AcademyCamera->SetRelativeLocation(BaseLocation + FVector(
+                0.0f,
+                FMath::Sin(PresentationTime * 0.18f) * 22.0f * DriftBlend,
+                FMath::Sin(PresentationTime * 0.25f) * 5.0f * DriftBlend));
+            AcademyCamera->SetRelativeRotation(OverviewCameraTransform.Rotator());
+            AcademyCamera->SetFieldOfView(OverviewFOV);
+        }
+        break;
+
+    case ECameraState::Focusing:
+    case ECameraState::Returning:
+        UpdateCameraTransition(DeltaSeconds);
+        break;
+
+    case ECameraState::Focused:
+        break;
+    }
+
+    UpdatePortalAtmosphere();
+}
+
+bool AAcademyWorldDirector::FocusPortal(int32 PortalIndex)
+{
+    if (!AcademyCamera || !PortalPanels.IsValidIndex(PortalIndex) || !PortalPanels[PortalIndex])
+    {
+        return false;
+    }
+
+    ActivePortalIndex = PortalIndex;
+    const FVector PortalCenter = PortalPanels[PortalIndex]->GetRelativeLocation();
+    const FVector FocusLocation = PortalCenter + FVector(-1420.0f, 90.0f, 110.0f);
+    const FVector LookAt = PortalCenter + FVector(0.0f, 0.0f, 90.0f);
+    const FQuat FocusRotation = FRotationMatrix::MakeFromX(LookAt - FocusLocation).ToQuat();
+    BeginCameraTransition(
+        ECameraState::Focusing,
+        FTransform(FocusRotation, FocusLocation),
+        PortalFocusFOV,
+        FocusDuration);
+    return true;
+}
+
+void AAcademyWorldDirector::ReturnToOverview()
+{
+    if (!AcademyCamera)
+    {
+        return;
+    }
+
+    BeginCameraTransition(
+        ECameraState::Returning,
+        OverviewCameraTransform,
+        OverviewFOV,
+        ReturnDuration);
+}
+
+void AAcademyWorldDirector::SetReducedMotionEnabled(bool bEnabled)
+{
+    bReducedMotionEnabled = bEnabled;
+    if (CinematicGrade)
+    {
+        CinematicGrade->Settings.MotionBlurAmount = bEnabled ? 0.0f : 0.10f;
+    }
+
+    if (bEnabled && CameraState == ECameraState::Arrival)
+    {
+        AcademyCamera->SetRelativeTransform(OverviewCameraTransform);
+        AcademyCamera->SetFieldOfView(OverviewFOV);
+        CameraState = ECameraState::Overview;
+        OverviewIdleTime = 0.0f;
+    }
+    else if (bEnabled && (CameraState == ECameraState::Focusing || CameraState == ECameraState::Returning))
+    {
+        AcademyCamera->SetRelativeTransform(TransitionTargetTransform);
+        AcademyCamera->SetFieldOfView(TransitionTargetFOV);
+        PortalFocusAlpha = CameraState == ECameraState::Returning ? 0.0f : 1.0f;
+        FinishCameraTransition();
+    }
+}
+
+void AAcademyWorldDirector::BeginCameraTransition(
+    ECameraState NewState,
+    const FTransform& TargetTransform,
+    float TargetFOV,
+    float Duration)
+{
+    TransitionStartTransform = AcademyCamera->GetRelativeTransform();
+    TransitionTargetTransform = TargetTransform;
+    TransitionStartFOV = AcademyCamera->FieldOfView;
+    TransitionTargetFOV = TargetFOV;
+    TransitionElapsed = 0.0f;
+    TransitionDuration = bReducedMotionEnabled ? 0.0f : Duration;
+    CameraState = NewState;
+
+    if (TransitionDuration <= KINDA_SMALL_NUMBER)
+    {
+        AcademyCamera->SetRelativeTransform(TransitionTargetTransform);
+        AcademyCamera->SetFieldOfView(TransitionTargetFOV);
+        PortalFocusAlpha = CameraState == ECameraState::Returning ? 0.0f : 1.0f;
+        FinishCameraTransition();
+    }
+}
+
+void AAcademyWorldDirector::UpdateCameraTransition(float DeltaSeconds)
+{
+    TransitionElapsed += DeltaSeconds;
+    const float Alpha = FMath::Clamp(
+        TransitionElapsed / FMath::Max(TransitionDuration, KINDA_SMALL_NUMBER),
+        0.0f,
+        1.0f);
+    const float Eased = FMath::InterpEaseInOut(0.0f, 1.0f, Alpha, 2.0f);
+    const FVector Location = FMath::Lerp(
+        TransitionStartTransform.GetLocation(),
+        TransitionTargetTransform.GetLocation(),
+        Eased);
+    const FQuat Rotation = FQuat::Slerp(
+        TransitionStartTransform.GetRotation(),
+        TransitionTargetTransform.GetRotation(),
+        Eased);
+
+    AcademyCamera->SetRelativeLocationAndRotation(Location, Rotation);
+    AcademyCamera->SetFieldOfView(FMath::Lerp(TransitionStartFOV, TransitionTargetFOV, Eased));
+    PortalFocusAlpha = CameraState == ECameraState::Returning ? 1.0f - Eased : Eased;
+
+    if (Alpha >= 1.0f)
+    {
+        FinishCameraTransition();
+    }
+}
+
+void AAcademyWorldDirector::FinishCameraTransition()
+{
+    if (CameraState == ECameraState::Focusing)
+    {
+        CameraState = ECameraState::Focused;
+        PortalFocusAlpha = 1.0f;
+    }
+    else if (CameraState == ECameraState::Returning)
+    {
+        CameraState = ECameraState::Overview;
+        PortalFocusAlpha = 0.0f;
+        ActivePortalIndex = INDEX_NONE;
+        OverviewIdleTime = 0.0f;
+    }
+}
+
+void AAcademyWorldDirector::UpdatePortalAtmosphere()
+{
     for (int32 Index = 0; Index < PortalLights.Num(); ++Index)
     {
+        const bool bSelected = Index == ActivePortalIndex;
         if (UPointLightComponent* PortalLight = PortalLights[Index])
         {
             const float BaseIntensity = Index == 0 ? 4300.0f : 2800.0f;
-            const float Pulse = 0.86f + FMath::Sin(PresentationTime * 1.25f + Index * 1.4f) * 0.14f;
-            PortalLight->SetIntensity(BaseIntensity * Pulse);
+            const float Pulse = bReducedMotionEnabled
+                ? 1.0f
+                : 0.86f + FMath::Sin(PresentationTime * 1.25f + Index * 1.4f) * 0.14f;
+            const float FocusMultiplier = bSelected
+                ? FMath::Lerp(1.0f, 1.85f, PortalFocusAlpha)
+                : FMath::Lerp(1.0f, 0.52f, PortalFocusAlpha);
+            PortalLight->SetIntensity(BaseIntensity * Pulse * FocusMultiplier);
         }
 
         if (PortalOrbs.IsValidIndex(Index) && PortalOrbs[Index])
         {
-            const float Bob = FMath::Sin(PresentationTime * 0.72f + Index * 1.3f) * 18.0f;
+            const float Bob = bReducedMotionEnabled
+                ? 0.0f
+                : FMath::Sin(PresentationTime * 0.72f + Index * 1.3f) * 18.0f;
             PortalOrbs[Index]->SetRelativeLocation(FVector(1030, -750.0f + Index * 500.0f, 760.0f + Bob));
-            PortalOrbs[Index]->SetRelativeRotation(FRotator(
-                PresentationTime * 18.0f,
-                PresentationTime * 31.0f + Index * 45.0f,
-                0.0f));
+            PortalOrbs[Index]->SetRelativeRotation(bReducedMotionEnabled
+                ? FRotator::ZeroRotator
+                : FRotator(PresentationTime * 18.0f, PresentationTime * 31.0f + Index * 45.0f, 0.0f));
+            const float ScaleMultiplier = bSelected
+                ? FMath::Lerp(1.0f, 1.35f, PortalFocusAlpha)
+                : FMath::Lerp(1.0f, 0.88f, PortalFocusAlpha);
+            PortalOrbs[Index]->SetRelativeScale3D(FVector(0.62f * ScaleMultiplier));
         }
     }
 }
