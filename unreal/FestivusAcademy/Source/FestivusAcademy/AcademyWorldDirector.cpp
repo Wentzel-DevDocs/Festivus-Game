@@ -84,5 +84,5 @@ AAcademyWorldDirector::AAcademyWorldDirector()
     Fog->SetupAttachment(SceneRoot);
     Fog->FogDensity = 0.018f;
     Fog->FogHeightFalloff = 0.16f;
-    Fog->FogInscatteringColor = FLinearColor(0.025f, 0.08f, 0.10f);
+    Fog->SetFogInscatteringColor(FLinearColor(0.025f, 0.08f, 0.10f));
 }

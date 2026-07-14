@@ -86,7 +86,14 @@ void UAcademyGameInstanceSubsystem::HandleCatalogResponse(
         EHttpResponseCodes::IsOk(Response->GetResponseCode());
     const bool bParsed = bHttpOk && ParseCatalog(Response->GetContentAsString());
 
-    if (!bParsed)
+    if (bParsed)
+    {
+        UE_LOG(LogFestivusAcademy, Display,
+            TEXT("Academy catalog online: %d technology rooms from %s."),
+            Rooms.Num(),
+            *BaseUrl);
+    }
+    else
     {
         const int32 Status = Response.IsValid() ? Response->GetResponseCode() : 0;
         UE_LOG(LogFestivusAcademy, Warning,
