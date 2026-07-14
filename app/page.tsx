@@ -14,6 +14,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { getSavedName, saveName } from "@/lib/identity";
 import Stamp from "@/components/Stamp";
 
@@ -126,6 +127,13 @@ export default function LandingPage() {
             >
               Open boss broadcast
             </button>
+
+            <Link
+              href="/academy"
+              className="display-header flex min-h-14 w-full items-center justify-center rounded-lg border border-support/70 bg-support/10 px-4 text-center text-lg text-support transition-colors hover:bg-support hover:text-aluminum-950"
+            >
+              Enter developer academy
+            </Link>
           </div>
 
           <div className="hud-rule my-6" />

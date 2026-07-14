@@ -4,9 +4,7 @@
  * Next.js App Router wraps every page in this file. It is the one place we:
  *  - declare the page <title> and description (Next turns the exported
  *    `metadata` object into <meta> tags for us),
- *  - pin the viewport so phones can NOT pinch/double-tap zoom — critical,
- *    because the mash button gets tapped very fast and an accidental zoom
- *    would ruin the game,
+ *  - set a device-width viewport while preserving user zoom for accessibility,
  *  - import the global stylesheet once,
  *  - set the dark aluminum base colors on <body> so every page starts
  *    on-theme.
@@ -48,13 +46,11 @@ export const metadata: Metadata = {
 };
 
 // Next.js wants viewport settings exported separately from `metadata`.
-// maximumScale: 1 disables pinch-zoom; combined with the CSS
-// `touch-action: manipulation` in globals.css, rapid mash taps never
-// trigger the browser's double-tap-to-zoom gesture.
+// `touch-action: manipulation` prevents accidental double-tap zoom on the
+// rapid game controls while still allowing intentional pinch zoom.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
   themeColor: "#070a0f",
 };

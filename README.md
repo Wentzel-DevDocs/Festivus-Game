@@ -443,6 +443,8 @@ If anyone (including you) accidentally breaks the promise, `pnpm sim` fails.
 
 ```bash
 pnpm typecheck   # TypeScript strict — no build, just checks the types
+pnpm academy:validate && pnpm academy:sim
+                 # curriculum integrity + live-cohort privacy/authority simulation
 pnpm sim         # headless full match against the REAL room logic (~40 s):
                  # phases advance, boss inputs refused, rate cap holds,
                  # tug teams assigned, anonymity sweep, approval math,
@@ -493,6 +495,7 @@ Run all three before merging. `pnpm sim` is the one that guards the promises.
 ```
 app/                      Next.js pages + API routes (this part runs on Vercel)
   page.tsx                landing page — join as player or boss, no room codes
+  academy/                AI-first coding rooms + playable mission workbench
   play/page.tsx           the phone controller (direct HELP/HINDER controls)
   boss/page.tsx           the big-screen broadcast (stage, host controls, feed)
   api/config/route.ts     GET  level_config tuning  → read by the room at start
@@ -506,6 +509,7 @@ db/
   seed.ts                 writes default tuning into level_config (pnpm db:seed)
   migrations/             generated SQL migrations (pnpm db:generate / db:migrate)
 lib/
+  academy/                curriculum catalog, checks, cohort wire protocol + client
   game/config.ts          every tunable number in one place, with the why
   game/engine/types.ts    the EventModule contract — start reading here
   game/engine/registry.ts the ordered list of events in a match
@@ -527,9 +531,13 @@ render/
 server/game/
   core.ts                 THE game logic: roster, tick, aggregate action routing, rate cap (transport-agnostic)
   server.ts               Socket.IO room server — WebSocket + 25 Hz tick adapter over core.ts (pnpm start:server)
+server/academy/
+  cohorts.ts              transient validation + aggregate live-cohort state
 railway.json              Railway deploy config (runs the room server, not Next.js)
 scripts/
   simulate.ts             pnpm sim — headless full-match promise-checker (drives core.ts directly)
+  simulate-academy.ts     pnpm academy:sim — cohort authority + source-retention proof
+unreal/FestivusAcademy/   UE 5.7 academy shell (procedural atrium + embedded rooms)
 public/assets/            static files (justin-placeholder.svg lives here)
 ```
 
