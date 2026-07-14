@@ -14,6 +14,10 @@
     {
       "Name": "WebBrowserWidget",
       "Enabled": true
+    },
+    {
+      "Name": "PythonScriptPlugin",
+      "Enabled": true
     }
   ]
 }

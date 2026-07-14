@@ -4,6 +4,8 @@
 #include "GameFramework/PlayerController.h"
 #include "AcademyPlayerController.generated.h"
 
+class UAcademyHUDWidget;
+
 UCLASS()
 class FESTIVUSACADEMY_API AAcademyPlayerController : public APlayerController
 {
@@ -11,4 +13,8 @@ class FESTIVUSACADEMY_API AAcademyPlayerController : public APlayerController
 
 protected:
     virtual void BeginPlay() override;
+
+private:
+    UPROPERTY(Transient)
+    TObjectPtr<UAcademyHUDWidget> AcademyHUD;
 };

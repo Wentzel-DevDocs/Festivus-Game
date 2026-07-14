@@ -6,6 +6,8 @@ const requiredFiles = [
   "FestivusAcademy.uproject",
   "Config/DefaultEngine.ini",
   "Config/DefaultGame.ini",
+  "Content/Maps/AcademyAtrium.umap",
+  "Tools/create_academy_map.py",
   "Source/FestivusAcademy.Target.cs",
   "Source/FestivusAcademyEditor.Target.cs",
   "Source/FestivusAcademy/FestivusAcademy.Build.cs",
@@ -42,9 +44,26 @@ if (
   throw new Error("WebBrowserWidget must be enabled for web-delivered missions");
 }
 
+if (
+  !project.Plugins?.some(
+    (plugin) => plugin.Name === "PythonScriptPlugin" && plugin.Enabled === true,
+  )
+) {
+  throw new Error("PythonScriptPlugin must be enabled for reproducible editor authoring");
+}
+
 const config = await readFile(resolve(root, "Config/DefaultEngine.ini"), "utf8");
 if (!config.includes("GlobalDefaultGameMode=/Script/FestivusAcademy.AcademyGameMode")) {
   throw new Error("AcademyGameMode is not configured as the global game mode");
+}
+for (const mapSetting of [
+  "GameDefaultMap=/Game/Maps/AcademyAtrium",
+  "EditorStartupMap=/Game/Maps/AcademyAtrium",
+  "r.GenerateMeshDistanceFields=True",
+]) {
+  if (!config.includes(mapSetting)) {
+    throw new Error(`Missing durable academy map setting: ${mapSetting}`);
+  }
 }
 
 const gameConfig = await readFile(resolve(root, "Config/DefaultGame.ini"), "utf8");
