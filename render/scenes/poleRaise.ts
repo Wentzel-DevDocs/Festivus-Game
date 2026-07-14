@@ -27,6 +27,7 @@ import {
   springTo,
 } from "../toolkit";
 import type { SpringState } from "../toolkit";
+import { CinematicAtmosphere } from "./atmosphere";
 
 /* Fonts mirror the CSS tokens in app/globals.css — Pixi draws to canvas and
  * can't read CSS variables, so we repeat the font stacks here. */
@@ -62,6 +63,7 @@ export const poleRaiseScene: SceneFactory = () => {
   let gaugeLabel: Text;
   let fxLayer: Container;
   let particles: ParticleBurst;
+  let atmosphere: CinematicAtmosphere;
 
   // Overlay (countdown / result banner / miracle flash)
   let overlay: Container;
@@ -260,6 +262,7 @@ export const poleRaiseScene: SceneFactory = () => {
     if (banner.visible) redrawBanner(lastAccent); // keep the panel fitting its text
     miracleText.style.fontSize = clampNum(h * 0.07, 20, 48);
     miracleText.position.set(w / 2, h * 0.2);
+    atmosphere.layout(w, h, floorY / h);
   }
 
   /* ── overlay behaviors ────────────────────────────────────────────────── */
@@ -404,9 +407,26 @@ export const poleRaiseScene: SceneFactory = () => {
       gaugeLabel.anchor.set(0.5);
       fxLayer = new Container();
       particles = new ParticleBurst(fxLayer);
+      atmosphere = new CinematicAtmosphere(
+        { light: 0xf2c96d, rim: COLORS.support, fog: 0x71808c, ember: COLORS.grease },
+        svc.reducedMotion,
+        svc.visualDensity,
+      );
       buildOverlay();
 
-      stage.addChild(bg, pole, justin, gaugeG, gaugeFill, gaugeTitle, gaugeLabel, overlay, fxLayer);
+      stage.addChild(
+        bg,
+        atmosphere.back,
+        pole,
+        justin,
+        gaugeG,
+        gaugeFill,
+        gaugeTitle,
+        gaugeLabel,
+        atmosphere.front,
+        fxLayer,
+        overlay,
+      );
       layout();
     },
 
@@ -421,7 +441,10 @@ export const poleRaiseScene: SceneFactory = () => {
 
       // Play one-shot effects that arrived since last frame.
       for (const f of args.fx) {
-        if (f.type === "miracle") playMiracle();
+        if (f.type === "miracle") {
+          playMiracle();
+          atmosphere.impact(1, COLORS.grease);
+        }
       }
 
       // 1. Read the authoritative progress — unless the result banner is up,
@@ -468,6 +491,7 @@ export const poleRaiseScene: SceneFactory = () => {
       updateCountdownOverlay(args);
       updateOutcomeOverlay(args);
       updateMiracleOverlay(args.dtMs);
+      atmosphere.update(args.dtMs, args.snap.phase, strain);
       particles.update(args.dtMs);
     },
 

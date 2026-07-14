@@ -28,6 +28,7 @@ import {
   springTo,
 } from "../toolkit";
 import type { SpringState } from "../toolkit";
+import { CinematicAtmosphere } from "./atmosphere";
 
 /* Fonts mirror the CSS tokens in app/globals.css — Pixi draws to canvas and
  * can't read CSS variables, so we repeat the font stacks here. */
@@ -74,6 +75,7 @@ export const swimSprintScene: SceneFactory = () => {
   let fxLayer: Container;
   let particles: ParticleBurst;
   let shaker: Shaker;
+  let atmosphere: CinematicAtmosphere;
 
   // Overlay (countdown / result banner / miracle flash)
   let overlay: Container;
@@ -348,6 +350,7 @@ export const swimSprintScene: SceneFactory = () => {
     if (banner.visible) redrawBanner(lastAccent);
     miracleText.style.fontSize = clampNum(h * 0.07, 20, 48);
     miracleText.position.set(w / 2, h * 0.18);
+    atmosphere.layout(w, h, surfaceY / h);
   }
 
   /** Wavy surface line — the ONE thing we redraw every frame. Cheap. */
@@ -514,11 +517,25 @@ export const swimSprintScene: SceneFactory = () => {
       fxLayer = new Container();
       particles = new ParticleBurst(fxLayer);
       shaker = new Shaker(world);
+      atmosphere = new CinematicAtmosphere(
+        { light: WATER_SURFACE, rim: COLORS.pool, fog: 0xb9dfea, ember: 0x7fd3e7 },
+        svc.reducedMotion,
+        svc.visualDensity,
+      );
       buildOverlay();
 
       // Draw order: pool → ropes → crowd → swimmer → surface line (in FRONT
       // of the swimmer, so he reads as half-submerged) → particles.
-      world.addChild(stageBack, ropes, crowd, swimmer, surface, fxLayer);
+      world.addChild(
+        stageBack,
+        atmosphere.back,
+        ropes,
+        crowd,
+        swimmer,
+        surface,
+        atmosphere.front,
+        fxLayer,
+      );
       stage.addChild(world, overlay);
 
       layout();
@@ -540,8 +557,14 @@ export const swimSprintScene: SceneFactory = () => {
 
       // Play one-shot effects that arrived since last frame.
       for (const f of args.fx) {
-        if (f.type === "miracle") playMiracle();
-        if (f.type === "sink") playSinkImpact();
+        if (f.type === "miracle") {
+          playMiracle();
+          atmosphere.impact(1, COLORS.grease);
+        }
+        if (f.type === "sink") {
+          playSinkImpact();
+          atmosphere.impact(0.9, WATER_SURFACE);
+        }
       }
 
       // 1. Read the authoritative view — unless the result banner is up.
@@ -646,6 +669,11 @@ export const swimSprintScene: SceneFactory = () => {
       updateCountdownOverlay(args);
       updateOutcomeOverlay(args);
       updateMiracleOverlay(args.dtMs);
+      atmosphere.update(
+        args.dtMs,
+        args.snap.phase,
+        clampNum(smoothedSpeed / 220 + (sinkingShown ? 0.35 : 0), 0, 1),
+      );
       particles.update(args.dtMs);
       shaker.update(args.dtMs);
     },

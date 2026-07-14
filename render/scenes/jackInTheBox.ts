@@ -34,6 +34,7 @@ import {
   springTo,
 } from "../toolkit";
 import type { SpringState } from "../toolkit";
+import { CinematicAtmosphere } from "./atmosphere";
 
 const ALUMINUM_300 = 0xb8bfc6; // --color-aluminum-300 from globals.css
 const GOLD = 0xd9a514;
@@ -148,6 +149,7 @@ export const jackInTheBoxScene: SceneFactory = () => {
   let confetti: ParticleBurst | null = null;
   let shaker: Shaker | null = null;
   let miracle: MiracleFlash | null = null;
+  let atmosphere: CinematicAtmosphere | null = null;
 
   // Layout facts.
   let cx = 0;
@@ -416,6 +418,7 @@ export const jackInTheBoxScene: SceneFactory = () => {
     finaleStatus.position.set(cx, Math.max(18, h * 0.065));
 
     miracle?.layout(w, h);
+    atmosphere?.layout(w, h, horizonY / h);
   }
 
   /** Redraw the coil between the box mouth and the head as a zigzag. */
@@ -486,6 +489,7 @@ export const jackInTheBoxScene: SceneFactory = () => {
         lifeMs: 1400,
       });
       secondBurstIn = 240; // the staggered second burst
+      atmosphere?.impact(1, GOLD);
       if (!reduced) shaker?.kick(16);
     } else {
       headSpring.value = restY;
@@ -501,6 +505,11 @@ export const jackInTheBoxScene: SceneFactory = () => {
       world = new Container();
       overlay = new Container();
       stage.addChild(world, overlay);
+      atmosphere = new CinematicAtmosphere(
+        { light: GOLD, rim: SIGNAL_CYAN, fog: 0x52697a, ember: SIGNAL_GREEN },
+        svc.reducedMotion,
+        svc.visualDensity,
+      );
 
       environmentG = new Graphics();
       auraG = new Graphics();
@@ -521,7 +530,7 @@ export const jackInTheBoxScene: SceneFactory = () => {
         statusPips.push(pip);
       }
       foregroundG = new Graphics();
-      world.addChild(environmentG, auraG, runeWheel);
+      world.addChild(environmentG, atmosphere.back, auraG, runeWheel);
 
       boxC = new Container();
       boxInner = new Container();
@@ -571,7 +580,7 @@ export const jackInTheBoxScene: SceneFactory = () => {
       head = makeJustinHead(120, svc.photoUrl);
       head.visible = false;
       // Order matters: environment → box → coil → head → forged foreground.
-      world.addChild(boxC, springG, head, foregroundG);
+      world.addChild(boxC, springG, head, foregroundG, atmosphere.front);
 
       happy = new Text({
         text: "HAPPY FESTIVUS",
@@ -752,9 +761,13 @@ export const jackInTheBoxScene: SceneFactory = () => {
 
       // fx contract (miracles can't occur here, but never say never).
       for (const f of args.fx) {
-        if (f.type === "miracle") miracle?.trigger();
+        if (f.type === "miracle") {
+          miracle?.trigger();
+          atmosphere?.impact(1, GOLD);
+        }
       }
 
+      atmosphere?.update(dt, args.snap.phase, popped ? 0.8 : windT);
       confetti?.update(dt);
       shaker?.update(dt);
       miracle?.update(dt);
@@ -765,6 +778,7 @@ export const jackInTheBoxScene: SceneFactory = () => {
       confetti = null;
       miracle?.destroy();
       miracle = null;
+      atmosphere = null;
       // GameCanvas destroys the display tree after unmount.
       world = null;
       overlay = null;

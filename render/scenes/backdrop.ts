@@ -18,6 +18,7 @@ import { Container, Graphics, Text } from "pixi.js";
 import type { SceneFactory, SceneServices } from "../core";
 import { COLORS, ParticleBurst, springTo } from "../toolkit";
 import type { SpringState } from "../toolkit";
+import { CinematicAtmosphere } from "./atmosphere";
 
 /** --color-aluminum-300 from app/globals.css (toolkit only mirrors a few). */
 const ALUMINUM_300 = 0xb8bfc6;
@@ -159,6 +160,7 @@ export const backdropScene: SceneFactory = () => {
   let overlay: Container | null = null; // flashes above the scenery
   let glow: Container | null = null; // red grievance glow (alpha-driven)
   let miracle: MiracleFlash | null = null;
+  let atmosphere: CinematicAtmosphere | null = null;
   let orbitWheel: Container | null = null;
   let scanLine: Graphics | null = null;
   let phaseReadout: Text | null = null;
@@ -501,9 +503,15 @@ export const backdropScene: SceneFactory = () => {
       services = svc;
       world = new Container();
       overlay = new Container();
-      stage.addChild(world, overlay);
+      atmosphere = new CinematicAtmosphere(
+        { light: SIGNAL_CYAN, rim: SIGNAL_BLUE, fog: 0x60768b, ember: SIGNAL_GREEN },
+        svc.reducedMotion,
+        svc.visualDensity,
+      );
+      stage.addChild(atmosphere.back, world, atmosphere.front, overlay);
       miracle = new MiracleFlash(overlay, svc.reducedMotion);
       build(width, height);
+      atmosphere.layout(width, height, 0.64);
       miracle.layout(width, height);
       lastW = width;
       lastH = height;
@@ -517,6 +525,7 @@ export const backdropScene: SceneFactory = () => {
         lastW = args.width;
         lastH = args.height;
         build(lastW, lastH);
+        atmosphere?.layout(lastW, lastH, 0.64);
         miracle?.layout(lastW, lastH);
       }
 
@@ -560,7 +569,10 @@ export const backdropScene: SceneFactory = () => {
 
       // Honor the fx contract even here (see note on MiracleFlash).
       for (const f of args.fx) {
-        if (f.type === "miracle") miracle?.trigger();
+        if (f.type === "miracle") {
+          miracle?.trigger();
+          atmosphere?.impact(1, GOLD);
+        }
       }
       miracle?.update(args.dtMs);
 
@@ -587,11 +599,13 @@ export const backdropScene: SceneFactory = () => {
       }
       glowAlpha += (target - glowAlpha) * (1 - Math.exp(-args.dtMs / 300));
       if (glow) glow.alpha = glowAlpha;
+      atmosphere?.update(args.dtMs, phase, glowAlpha);
     },
 
     unmount(): void {
       miracle?.destroy();
       miracle = null;
+      atmosphere = null;
       // GameCanvas destroys the display tree for us after unmount.
       world = null;
       overlay = null;

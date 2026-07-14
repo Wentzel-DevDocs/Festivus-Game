@@ -22,6 +22,10 @@ import type { EventView, FxEvent } from "@/lib/game/engine/types";
 import type { RoomApi } from "@/lib/realtime/useRoom";
 import { GAME_CONFIG } from "@/lib/game/config";
 import { getSceneFactory } from "./scenes";
+import {
+  createCinematicDirector,
+  type CinematicDirector,
+} from "./cinematicDirector";
 
 /* ── The contract every scene implements ─────────────────────────────────── */
 
@@ -121,6 +125,7 @@ export default function GameCanvas({
     let destroyed = false;
     let app: Application | null = null;
     let scene: Scene | null = null;
+    let cinematic: CinematicDirector | null = null;
     let sceneKey = "";
     let resizeObserver: ResizeObserver | null = null;
     let resizeFrame = 0;
@@ -166,7 +171,17 @@ export default function GameCanvas({
       resizeObserver.observe(host);
 
       const root = new Container();
-      a.stage.addChild(root);
+      cinematic = createCinematicDirector({
+        reducedMotion: services.reducedMotion,
+        visualDensity: services.visualDensity,
+        editorialTransitions: mode === "broadcast",
+      });
+      cinematic.mount(
+        a.stage,
+        root,
+        a.renderer.width / a.renderer.resolution,
+        a.renderer.height / a.renderer.resolution,
+      );
 
       a.ticker.add(() => {
         const buf = room.bufferRef.current;
@@ -193,6 +208,22 @@ export default function GameCanvas({
 
         const fx = fxQueue.current;
         fxQueue.current = [];
+        const width = a.renderer.width / a.renderer.resolution;
+        const height = a.renderer.height / a.renderer.resolution;
+
+        // The persistent director survives scene swaps: interstitial titles,
+        // letterbox bars, fog, shadows, impacts, and camera pulses therefore
+        // read as one continuous production rather than isolated mini-games.
+        const cinematicFrame = cinematic?.update({ snap, fx, dtMs, width, height });
+        if (cinematicFrame) {
+          root.pivot.set(width / 2, height / 2);
+          root.position.set(
+            width / 2 + cinematicFrame.camera.x,
+            height / 2 + cinematicFrame.camera.y,
+          );
+          root.scale.set(cinematicFrame.camera.scale);
+          root.rotation = cinematicFrame.camera.rotation;
+        }
 
         // Never lerp across a round boundary: the previous snapshot's view
         // belongs to a DIFFERENT event (or phase), and blending its
@@ -214,8 +245,8 @@ export default function GameCanvas({
             : snap.tugPosition,
           dtMs,
           fx,
-          width: a.renderer.width / a.renderer.resolution,
-          height: a.renderer.height / a.renderer.resolution,
+          width,
+          height,
         });
       });
     })();
@@ -225,6 +256,8 @@ export default function GameCanvas({
       resizeObserver?.disconnect();
       cancelAnimationFrame(resizeFrame);
       scene?.unmount();
+      cinematic?.destroy();
+      cinematic = null;
       if (app) {
         app.destroy(true, { children: true });
         app = null;
