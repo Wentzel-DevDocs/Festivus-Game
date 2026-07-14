@@ -3,16 +3,18 @@
  *
  * Drives the REAL room logic (server/game/core.ts) through an in-memory
  * transport: 1 boss + 5 players, a complete match — grievances → all 5
- * events (side picks, mashing, tug teams) → finale → splash — asserting the
+ * events (direct dual-side actions, tug teams) → finale → splash — asserting
+ * the
  * game's hard promises:
  *
  *   1. phases auto-advance in order, all 5 events run
- *   2. boss connections cannot tap or pick a side (server-enforced)
- *   3. the server rate cap holds (a 60-taps-in-a-burst cheater counts ≤ cap)
+ *   2. boss connections cannot tap; stale side picks are refused
+ *   3. the shared rate cap holds across alternating help/hinder taps
  *   4. tug-of-war assigns everyone a team; solo events don't
- *   5. NO snapshot ever links a player to a help/hinder side
- *   6. the approval verdict matches the aggregate headcount math
+ *   5. NO snapshot ever links a player to a help/hinder action
+ *   6. the approval verdict matches weighted aggregate action contribution
  *   7. the champion is the top masher
+ *   8. the grievance limit is three per player, independently
  *
  * RoomCore is transport-agnostic, so this needs no server, no WebSockets, and
  * no DB — the fetch stub makes tuning/persistence no-op to defaults. The
@@ -32,7 +34,6 @@ async function main() {
   const { EVENTS } = await import("../lib/game/engine/registry");
   const { EVT_SNAPSHOT, EVT_YOU } = await import("../lib/realtime/protocol");
   const EVENT_COUNT = EVENTS.length;
-  const APPROVAL_WEIGHT = EVENTS.filter((e) => !e.teamBased).reduce((s, e) => s + e.weight, 0);
   type Snapshot = import("../lib/realtime/protocol").Snapshot;
   type YouMessage = import("../lib/realtime/protocol").YouMessage;
 
@@ -126,7 +127,7 @@ async function main() {
 
   /* ── (2) boss inputs are ignored server-side ─────────────────────────── */
 
-  check(act<{ counted: boolean }>(bossId, "tap").counted === false, "boss tap is refused");
+  check(act<{ counted: boolean }>(bossId, "tap", 0).counted === false, "boss tap is refused");
   check(act<{ ok: boolean }>(bossId, "pickSide", 0).ok === false, "boss pickSide is refused");
 
   /* ── start match: grievances ─────────────────────────────────────────── */
@@ -134,17 +135,42 @@ async function main() {
   check(act<{ ok: boolean }>(bossId, "hostStart").ok, "boss (host) can start the match");
 
   await until(() => latest?.phase === "grievance_write", 5000, "grievance window opens");
-  for (const [i, p] of players.entries()) {
-    const res = act<{ ok: boolean }>(p.id, "submitGrievance", `Grievance number ${i + 1} about the office`);
-    if (!res.ok) failures.push(`grievance ${i + 1} rejected`);
+  // (8) Quotas belong to each player, not the room. Two players can each
+  // submit all three while their fourth is rejected independently.
+  for (const i of [1, 2, 3]) {
+    check(
+      act<{ ok: boolean }>(players[0].id, "submitGrievance", `Player one grievance ${i}`).ok,
+      `player 1 grievance ${i}/3 accepted`,
+    );
+  }
+  check(
+    !act<{ ok: boolean }>(players[0].id, "submitGrievance", "Player one grievance four").ok,
+    "player 1 fourth grievance refused",
+  );
+  for (const i of [1, 2, 3]) {
+    check(
+      act<{ ok: boolean }>(players[1].id, "submitGrievance", `Player two grievance ${i}`).ok,
+      `player 2 grievance ${i}/3 accepted independently`,
+    );
+  }
+  check(
+    !act<{ ok: boolean }>(players[1].id, "submitGrievance", "Player two grievance four").ok,
+    "player 2 fourth grievance refused",
+  );
+  for (const [i, p] of players.slice(2).entries()) {
+    for (const n of [1, 2, 3]) {
+      const res = act<{ ok: boolean }>(p.id, "submitGrievance", `Player ${i + 3} grievance ${n}`);
+      if (!res.ok) failures.push(`player ${i + 3} grievance ${n}/3 rejected`);
+    }
   }
   await until(() => latest?.phase === "grievance_reveal", 10_000, "reveal follows (early-exit)");
-  await until(() => (latest?.grievanceFeed.length ?? 0) === 5, 5000, "all 5 grievances revealed (shuffled)");
+  await until(() => (latest?.grievanceFeed.length ?? 0) === 15, 5000, "all 15 grievances revealed (3 per player)");
 
   /* ── play all 5 events ───────────────────────────────────────────────── */
 
-  const sidePick = (i: number): 0 | 1 => (i < 3 ? 0 : 1);
   let cheaterBurstDone = false;
+  let actionCycle = 0;
+  const soloResults: Snapshot["roundResults"] = [];
 
   for (let eventNum = 0; eventNum < EVENT_COUNT; eventNum++) {
     await until(
@@ -153,10 +179,13 @@ async function main() {
       `event ${eventNum + 1} begins`,
     );
     const meta = latest!.eventMeta!;
-    console.log(`    — ${meta.name} (${meta.teamBased ? "teams" : "pick sides"})`);
+    console.log(`    — ${meta.name} (${meta.teamBased ? "assigned teams" : "dual direct actions"})`);
 
     if (!meta.teamBased) {
-      for (const [i, p] of players.entries()) act(p.id, "pickSide", sidePick(i));
+      check(
+        !act<{ ok: boolean }>(players[0].id, "pickSide", 0).ok,
+        "solo event refuses obsolete side picks",
+      );
     } else {
       // (4) tug: picks refused, teams assigned
       check(!act<{ ok: boolean }>(players[0].id, "pickSide", 0).ok, "tug-of-war refuses manual side picks");
@@ -171,24 +200,59 @@ async function main() {
 
     await until(() => latest?.phase === "event_active", 15_000, `event ${eventNum + 1} active`);
 
+    if (!meta.teamBased) {
+      check(
+        !act<{ counted: boolean }>(players[0].id, "tap").counted,
+        "solo tap without a direct side is refused",
+      );
+      const help = act<{ counted: boolean; side?: 0 | 1 }>(players[0].id, "tap", 0);
+      const hinder = act<{ counted: boolean; side?: 0 | 1 }>(players[0].id, "tap", 1);
+      check(help.counted && help.side === 0, "player can help on a direct action");
+      check(hinder.counted && hinder.side === 1, "same player can immediately hinder");
+    } else {
+      const assigned = players[0].you?.team;
+      const spoofed = act<{ counted: boolean; side?: 0 | 1 }>(
+        players[0].id,
+        "tap",
+        assigned === 0 ? 1 : 0,
+      );
+      check(
+        spoofed.counted && spoofed.side === assigned,
+        "tug ignores a spoofed side and uses the assigned team",
+      );
+    }
+
     // (3) one cheater fires a 60-tap burst exactly once, during event 1.
     if (!cheaterBurstDone) {
       cheaterBurstDone = true;
-      const counted = Array.from({ length: 60 }, () => act<{ counted: boolean }>(players[0].id, "tap"))
-        .filter((r) => r.counted).length;
+      const counted = Array.from({ length: 60 }, (_, i) =>
+        act<{ counted: boolean }>(players[0].id, "tap", (i % 2) as 0 | 1),
+      ).filter((r) => r.counted).length;
       check(
-        counted <= GAME_CONFIG.MAX_COUNTED_TAPS_PER_SEC + 1,
-        `rate cap held: ${counted}/60 burst taps counted`,
+        counted <= GAME_CONFIG.MAX_COUNTED_TAPS_PER_SEC - 2,
+        `shared dual-side rate cap held: ${counted}/60 burst taps counted after two direct taps`,
       );
     }
 
     const snap = () => latest;
     while (snap()?.phase === "event_active") {
-      for (const p of players) act(p.id, "tap");
+      for (const [i, p] of players.entries()) {
+        if (meta.teamBased) act(p.id, "tap");
+        else act(p.id, "tap", ((i + actionCycle) % 2) as 0 | 1);
+      }
+      actionCycle++;
       await delay(125);
     }
     const after = snap()?.phase;
     check(after === "event_outcome" || after === "finale", `event ${eventNum + 1} resolved`);
+    if (!meta.teamBased) {
+      const result = snap()?.roundResults.find((r) => r.eventId === meta.id);
+      if (result) soloResults.push(result);
+      check(
+        !!result && result.supportForce > 0 && result.hinderForce > 0,
+        `${meta.name} records aggregate contribution on both sides`,
+      );
+    }
   }
 
   /* ── finale + splash ─────────────────────────────────────────────────── */
@@ -199,12 +263,22 @@ async function main() {
   const summary = latest!.matchSummary;
   check(!!summary, "match summary exists");
   if (summary) {
-    // (6) 3 helpers / 2 hinderers on every non-team event.
-    const wantSupport = 3 * APPROVAL_WEIGHT;
-    const wantHinder = 2 * APPROVAL_WEIGHT;
+    // (6) Approval is weighted aggregate input, so one player may appear in
+    // both totals without any identity-side record.
+    const weightById = new Map(EVENTS.map((e) => [e.id, e.weight]));
+    const wantSupport = soloResults.reduce(
+      (sum, r) => sum + r.supportForce * (weightById.get(r.eventId) ?? 0),
+      0,
+    );
+    const wantHinder = soloResults.reduce(
+      (sum, r) => sum + r.hinderForce * (weightById.get(r.eventId) ?? 0),
+      0,
+    );
     check(summary.approvalSupport === wantSupport, `approval support = ${wantSupport} (got ${summary.approvalSupport})`);
     check(summary.approvalHinder === wantHinder, `approval hinder = ${wantHinder} (got ${summary.approvalHinder})`);
-    check(summary.verdict === "beloved", `verdict beloved (got ${summary.verdict})`);
+    const wantVerdict =
+      wantSupport > wantHinder ? "beloved" : wantHinder > wantSupport ? "greased" : "divided";
+    check(summary.verdict === wantVerdict, `verdict ${wantVerdict} (got ${summary.verdict})`);
 
     // (7) champion = top masher in the final roster.
     const top = [...latest!.players].sort((a, b) => b.mashes - a.mashes)[0];

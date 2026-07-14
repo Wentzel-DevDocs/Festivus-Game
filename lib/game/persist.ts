@@ -2,7 +2,7 @@
  * The shape the room server POSTs to /api/results when a match ends —
  * the ONLY write path from live game to durable storage.
  *
- * Nothing in here can express "player X picked side Y": participants carry
+ * Nothing in here can express "player X acted on side Y": participants carry
  * mash counts only, round results carry aggregates only, grievances are
  * bare strings. The write boundary enforces anonymity as hard as the schema.
  */
@@ -21,7 +21,7 @@ export interface MatchPersistPayload {
   /** Unix ms timestamps. */
   startedAt: number;
   endedAt: number;
-  /** Weighted AGGREGATE headcounts across the match. */
+  /** Weighted AGGREGATE action totals across the match. */
   approvalSupport: number;
   approvalHinder: number;
   /** Sticky id of the champion (most mashes), or null for an empty match. */

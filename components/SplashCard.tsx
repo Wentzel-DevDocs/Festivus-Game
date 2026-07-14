@@ -4,9 +4,8 @@
  * SplashCard — a compact after-action report: verdict, aggregate alignment,
  * and the champion. Background lore stays available in a native disclosure.
  *
- * The verdict comes from AGGREGATE weighted headcounts only — the memo says
- * so out loud, because the whole game is built on nobody ever learning who
- * helped and who greased.
+ * The verdict comes from AGGREGATE weighted actions only — the memo says so
+ * out loud, because the game never records who helped or who greased.
  */
 
 import type { MatchSummary } from "@/lib/realtime/protocol";
@@ -56,7 +55,7 @@ export default function SplashCard({ summary }: SplashCardProps) {
               {verdict.headline}
             </h2>
             <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-aluminum-500">
-              Aggregate headcounts only // individual allegiance classified
+              Aggregate actions only // individual input attribution absent
             </p>
           </header>
 
@@ -137,8 +136,9 @@ export default function SplashCard({ summary }: SplashCardProps) {
         </summary>
         <div className="mt-3 space-y-3 border-l border-grease/40 pl-3 leading-6">
           <p>
-            Support and hinder totals are aggregate weighted headcounts. No
-            report, roster field, or database row links a person to a side.
+            Support and hinder totals are aggregate weighted actions. A player
+            may contribute to either or both; no report, roster field, or
+            database row links a person to an action side.
           </p>
           <p>
             The operation adapts the aluminum pole, Airing of Grievances, and

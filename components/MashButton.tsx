@@ -19,7 +19,7 @@ import { GAME_CONFIG } from "@/lib/game/config";
 import { sound } from "@/lib/sound";
 
 interface MashButtonProps {
-  /** False until the player has picked a side this round. */
+  /** False until the assigned-team event is active and a team exists. */
   enabled: boolean;
   /** Called once per ACCEPTED tap (not called while overheated/disabled). */
   onTap: () => void;
@@ -54,7 +54,7 @@ export default function MashButton({ enabled, onTap, label }: MashButtonProps) {
    * subscribe once and never churn.
    */
   const handleTap = useCallback(() => {
-    // Rejected taps: no side picked yet, or the meter is overheated.
+    // Rejected taps: team input is not active yet, or the meter overheated.
     if (!enabledRef.current || lockedRef.current) return;
 
     heatRef.current = Math.min(1, heatRef.current + GAME_CONFIG.OVERHEAT.heatPerTap);
@@ -239,7 +239,7 @@ export default function MashButton({ enabled, onTap, label }: MashButtonProps) {
           <span className="eyebrow text-aluminum-400">Input sealed</span>
           <span className="display-header text-3xl">{label ?? "Mash"}</span>
           <span className="font-mono text-[10px] normal-case tracking-normal text-aluminum-400">
-            choose a side first
+            awaiting team signal
           </span>
         </span>
       )}

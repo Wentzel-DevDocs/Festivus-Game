@@ -71,13 +71,13 @@ export const poleRaise: EventModule<PoleRaiseState> = {
     return state.progress >= 1;
   },
 
-  resolve(state, ctx): EventResult {
+  resolve(state): EventResult {
     return {
       winner: state.progress >= 1 ? "support" : "hinder",
       supportForce: state.force[0],
       hinderForce: state.force[1],
-      supportHead: ctx.sideCounts[0],
-      hinderHead: ctx.sideCounts[1],
+      supportHead: 0,
+      hinderHead: 0,
     };
   },
 

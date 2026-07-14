@@ -21,6 +21,7 @@ import {
   CONFETTI_COLORS,
   ParticleBurst,
   makeBody,
+  makeJointedLimb,
   makeJustinHead,
   makePole,
   springTo,
@@ -104,17 +105,21 @@ export const poleRaiseScene: SceneFactory = () => {
     // Origin is at his FEET so leaning rotates around the floor contact
     // point, like a person actually pushing something heavy.
     const c = new Container();
+    const rearArm = makeJointedLimb(
+      [[7, -45], [-9, -48], [-27, -50]],
+      { width: 6, color: 0x26313b, endColor: COLORS.skin, highlight: COLORS.aluminum },
+    );
+    const leadArm = makeJointedLimb(
+      [[-7, -46], [-18, -57], [-31, -61]],
+      { width: 6.5, color: 0x33404b, endColor: COLORS.skin, highlight: COLORS.aluminumLight },
+    );
     const body = makeBody(34, 52);
     body.position.set(0, -52); // shirt spans y -52..0, feet at 0
-    const arms = new Graphics()
-      .moveTo(-6, -46)
-      .lineTo(-30, -60)
-      .moveTo(6, -44)
-      .lineTo(-26, -50)
-      .stroke({ width: 5, color: COLORS.memo }); // both arms reach toward the pole
     const head = makeJustinHead(46, services.photoUrl);
     head.position.set(0, -74); // just above the shirt collar
-    c.addChild(body, arms, head);
+    // Rear arm, torso, lead arm gives the pose real overlap and depth while
+    // keeping both gloved hands visibly planted on the pole.
+    c.addChild(rearArm, body, leadArm, head);
     return c;
   }
 
@@ -201,7 +206,12 @@ export const poleRaiseScene: SceneFactory = () => {
     pole.position.set(pivotX, floorY - 10);
     pole.scale.y = poleLen / 100;
 
-    justinBaseX = pivotX + 44;
+    // Feet remain the transform origin, so scaling adds broadcast presence
+    // without changing the floor contact or the lean physics. The x offset
+    // scales with his reaching arm, keeping both hands planted on the pole.
+    const justinScale = w < 560 || h < 300 ? 1.2 : 1.3;
+    justin.scale.set(justinScale);
+    justinBaseX = pivotX + 44 * justinScale;
     justinBaseY = floorY;
     justin.position.set(justinBaseX, justinBaseY);
 

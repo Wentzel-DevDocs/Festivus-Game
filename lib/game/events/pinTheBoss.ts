@@ -113,15 +113,15 @@ export const pinTheBoss: EventModule<PinTheBossState> = {
     return state.pinnedOut;
   },
 
-  resolve(state, ctx): EventResult {
+  resolve(state): EventResult {
     return {
       // 3-count landed → Pile On (hinder) pinned the boss. Otherwise he
       // survived the clock and Prop Up (support) takes it.
       winner: state.pinnedOut ? "hinder" : "support",
       supportForce: state.force[0],
       hinderForce: state.force[1],
-      supportHead: ctx.sideCounts[0],
-      hinderHead: ctx.sideCounts[1],
+      supportHead: 0,
+      hinderHead: 0,
     };
   },
 
