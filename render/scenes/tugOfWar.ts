@@ -26,6 +26,7 @@ import {
   springTo,
 } from "../toolkit";
 import type { SpringState } from "../toolkit";
+import { CinematicAtmosphere } from "./atmosphere";
 
 const ALUMINUM_300 = 0xb8bfc6; // --color-aluminum-300 from globals.css
 const GOLD = 0xd9a514;
@@ -367,6 +368,7 @@ export const tugOfWarScene: SceneFactory = () => {
   let labelB: Text | null = null;
 
   let shaker: Shaker | null = null;
+  let atmosphere: CinematicAtmosphere | null = null;
   let miracle: MiracleFlash | null = null;
   let countdown: CountdownOverlay | null = null;
   let banner: OutcomeBanner | null = null;
@@ -456,6 +458,7 @@ export const tugOfWarScene: SceneFactory = () => {
     miracle?.layout(w, h);
     countdown?.layout(w, h);
     banner?.layout(w, h);
+    atmosphere?.layout(w, h, groundY / h);
   }
 
   /** Redraw the rope through the knot. Two sagging quadratic segments. */
@@ -477,10 +480,15 @@ export const tugOfWarScene: SceneFactory = () => {
       overlay = new Container();
       stage.addChild(world, overlay);
       shaker = new Shaker(world);
+      atmosphere = new CinematicAtmosphere(
+        { light: GOLD, rim: COLORS.support, fog: 0x6f6558, ember: COLORS.grease },
+        svc.reducedMotion,
+        svc.visualDensity,
+      );
 
       fieldG = new Graphics();
       ropeG = new Graphics();
-      world.addChild(fieldG, ropeG);
+      world.addChild(fieldG, atmosphere.back, ropeG);
 
       // Three pullers per team. Left team's arms reach right (+1), and
       // vice versa.
@@ -510,6 +518,7 @@ export const tugOfWarScene: SceneFactory = () => {
       });
       labelB.anchor.set(0.5);
       world.addChild(labelA, labelB);
+      world.addChild(atmosphere.front);
 
       miracle = new MiracleFlash(overlay, svc.reducedMotion);
       countdown = new CountdownOverlay(overlay);
@@ -575,10 +584,12 @@ export const tugOfWarScene: SceneFactory = () => {
       for (const f of args.fx) {
         if (f.type === "miracle") {
           miracle?.trigger();
+          atmosphere?.impact(1, GOLD);
           if (!reduced) shaker?.kick(8);
         }
       }
 
+      atmosphere?.update(args.dtMs, phase, Math.max(energyA, energyB));
       shaker?.update(args.dtMs);
       miracle?.update(args.dtMs);
       countdown?.update(args);
@@ -599,6 +610,7 @@ export const tugOfWarScene: SceneFactory = () => {
       labelA = null;
       labelB = null;
       shaker = null;
+      atmosphere = null;
       countdown = null;
       banner = null;
     },

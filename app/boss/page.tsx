@@ -13,7 +13,7 @@
  * "START THE FEATS" button. After that, auto-advance runs the show.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { useRoom } from "@/lib/realtime/useRoom";
@@ -21,6 +21,7 @@ import type { JoinParams } from "@/lib/realtime/protocol";
 import type { FxEvent } from "@/lib/game/engine/types";
 import type { Phase } from "@/lib/game/engine/session";
 import { GAME_CONFIG } from "@/lib/game/config";
+import { scoreCueFor } from "@/lib/game/presentation";
 import { getStickyId, getMuted, saveMuted } from "@/lib/identity";
 import { sound, type Sting } from "@/lib/sound";
 
@@ -64,6 +65,10 @@ export default function BossPage() {
   const joinIsPriority = phase === null || phase === "lobby";
   const isPrimaryHost = room.you?.isHost === true;
   const isSecondaryDisplay = room.you !== null && !isPrimaryHost;
+  const scoreCue = useMemo(
+    () => (isPrimaryHost && snapshot ? scoreCueFor(snapshot) : null),
+    [isPrimaryHost, snapshot],
+  );
 
   // The join URL people type into their phones. window.location only exists
   // in the browser, so we read it after mount — rendering it directly would
@@ -112,6 +117,14 @@ export default function BossPage() {
 
   const effectiveMuted = !isPrimaryHost || preferredMuted;
   useEffect(() => sound.setMuted(effectiveMuted), [effectiveMuted]);
+
+  // The room's designated host owns the adaptive score. This prevents a wall
+  // of slightly offset music from every phone while still allowing a player
+  // to become the audio host automatically in a phone-only room.
+  useEffect(() => {
+    sound.setScoreState(scoreCue);
+  }, [scoreCue]);
+  useEffect(() => () => sound.setScoreState(null), []);
 
   function toggleMute() {
     // Secondary screens stay silent and must never overwrite the primary

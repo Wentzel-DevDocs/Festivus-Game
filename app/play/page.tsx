@@ -19,7 +19,7 @@
  * inputs back. The server is the referee — we never compute results here.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useRoom, type RoomApi, type RoomStatus } from "@/lib/realtime/useRoom";
@@ -29,6 +29,7 @@ import type { Phase } from "@/lib/game/engine/session";
 import { getSavedName, getStickyId, getMuted, saveMuted } from "@/lib/identity";
 import { sound, type Sting } from "@/lib/sound";
 import { GAME_CONFIG } from "@/lib/game/config";
+import { scoreCueFor } from "@/lib/game/presentation";
 
 import GameCanvas from "@/render/core";
 import DualActionPad from "@/components/DualActionPad";
@@ -589,6 +590,11 @@ export default function PlayPage() {
 
   const room = useRoom(join);
   const snapshot = room.snapshot;
+  const isAudioHost = room.you?.isHost === true;
+  const scoreCue = useMemo(
+    () => (isAudioHost && snapshot ? scoreCueFor(snapshot) : null),
+    [isAudioHost, snapshot],
+  );
 
   /* ── Sound wiring ──────────────────────────────────────────────────── */
 
@@ -599,6 +605,14 @@ export default function PlayPage() {
     setMuted(m);
     sound.setMuted(m);
   }, []);
+
+  // Only the server-designated host plays the room score. One of the phones
+  // becomes that host when there is no boss display, so phone-only games keep
+  // the same soundtrack without every controller playing it at once.
+  useEffect(() => {
+    sound.setScoreState(scoreCue);
+  }, [scoreCue]);
+  useEffect(() => () => sound.setScoreState(null), []);
 
   function toggleMute() {
     const next = !muted;

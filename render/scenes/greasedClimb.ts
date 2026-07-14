@@ -28,6 +28,7 @@ import {
   springTo,
 } from "../toolkit";
 import type { SpringState } from "../toolkit";
+import { CinematicAtmosphere } from "./atmosphere";
 
 /* Fonts mirror the CSS tokens in app/globals.css — Pixi draws to canvas and
  * can't read CSS variables, so we repeat the font stacks here. */
@@ -79,6 +80,7 @@ export const greasedClimbScene: SceneFactory = () => {
   let fxLayer: Container;
   let particles: ParticleBurst;
   let shaker: Shaker;
+  let atmosphere: CinematicAtmosphere;
 
   // Overlay (countdown / result banner / miracle flash)
   let overlay: Container;
@@ -286,6 +288,7 @@ export const greasedClimbScene: SceneFactory = () => {
     if (banner.visible) redrawBanner(lastAccent);
     miracleText.style.fontSize = clampNum(h * 0.07, 20, 48);
     miracleText.position.set(w / 2, h * 0.18);
+    atmosphere.layout(w, h, baseY / h);
   }
 
   /* ── overlay behaviors ────────────────────────────────────────────────── */
@@ -442,11 +445,26 @@ export const greasedClimbScene: SceneFactory = () => {
       fxLayer = new Container();
       particles = new ParticleBurst(fxLayer);
       shaker = new Shaker(world);
+      atmosphere = new CinematicAtmosphere(
+        { light: 0xf5d479, rim: COLORS.grease, fog: 0x7b858d, ember: 0xffc54f },
+        svc.reducedMotion,
+        svc.visualDensity,
+      );
       buildOverlay();
 
       // Draw order: bg → pole → glints → smear → Justin (in front, hugging)
       // → flag → particles. Overlay stays outside the shaken world.
-      world.addChild(bg, pole, glintsG, smear, justin, flag, fxLayer);
+      world.addChild(
+        bg,
+        atmosphere.back,
+        pole,
+        glintsG,
+        smear,
+        justin,
+        flag,
+        atmosphere.front,
+        fxLayer,
+      );
       stage.addChild(world, overlay);
 
       layout();
@@ -466,8 +484,14 @@ export const greasedClimbScene: SceneFactory = () => {
 
       // Play one-shot effects that arrived since last frame.
       for (const f of args.fx) {
-        if (f.type === "miracle") playMiracle();
-        if (f.type === "slip") playSlip();
+        if (f.type === "miracle") {
+          playMiracle();
+          atmosphere.impact(1, COLORS.grease);
+        }
+        if (f.type === "slip") {
+          playSlip();
+          atmosphere.impact(0.85, COLORS.grease);
+        }
       }
 
       // 1. Read the authoritative view — unless the result banner is up.
@@ -502,6 +526,11 @@ export const greasedClimbScene: SceneFactory = () => {
       updateCountdownOverlay(args);
       updateOutcomeOverlay(args);
       updateMiracleOverlay(args.dtMs);
+      atmosphere.update(
+        args.dtMs,
+        args.snap.phase,
+        clampNum(Math.abs(ySpring.velocity) / 500 + (slipTiltMs > 0 ? 0.4 : 0), 0, 1),
+      );
       particles.update(args.dtMs);
       shaker.update(args.dtMs);
     },

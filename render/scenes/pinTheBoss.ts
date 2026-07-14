@@ -30,6 +30,7 @@ import {
   springTo,
 } from "../toolkit";
 import type { SpringState } from "../toolkit";
+import { CinematicAtmosphere } from "./atmosphere";
 
 const ALUMINUM_300 = 0xb8bfc6; // --color-aluminum-300 from globals.css
 const GOLD = 0xd9a514;
@@ -332,6 +333,7 @@ export const pinTheBossScene: SceneFactory = () => {
 
   let dust: ParticleBurst | null = null;
   let shaker: Shaker | null = null;
+  let atmosphere: CinematicAtmosphere | null = null;
   let miracle: MiracleFlash | null = null;
   let countdown: CountdownOverlay | null = null;
   let banner: OutcomeBanner | null = null;
@@ -450,6 +452,7 @@ export const pinTheBossScene: SceneFactory = () => {
     miracle?.layout(w, h);
     countdown?.layout(w, h);
     banner?.layout(w, h);
+    atmosphere?.layout(w, h, matY / h);
   }
 
   /** Show digits 1..n (popping any newly revealed one), hide the rest. */
@@ -509,6 +512,11 @@ export const pinTheBossScene: SceneFactory = () => {
       overlay = new Container();
       stage.addChild(world, overlay);
       shaker = new Shaker(world);
+      atmosphere = new CinematicAtmosphere(
+        { light: GOLD, rim: COLORS.grievance, fog: 0x756a64, ember: COLORS.grease },
+        svc.reducedMotion,
+        svc.visualDensity,
+      );
 
       matG = new Graphics();
       pinLineG = new Graphics();
@@ -522,7 +530,7 @@ export const pinTheBossScene: SceneFactory = () => {
       referee = ref.root;
       refArm = ref.arm;
       referee.visible = false; // only appears while the count is live
-      world.addChild(matG, pinLineG, pinLabel, plank, referee);
+      world.addChild(atmosphere.back, matG, pinLineG, pinLabel, plank, referee);
 
       // Digits live in `world` so impact shakes rattle them too.
       digits = [];
@@ -559,6 +567,7 @@ export const pinTheBossScene: SceneFactory = () => {
       stamp.rotation = -0.16;
       stamp.visible = false;
       world.addChild(stamp);
+      world.addChild(atmosphere.front);
 
       dust = new ParticleBurst(world);
       miracle = new MiracleFlash(overlay, svc.reducedMotion);
@@ -635,18 +644,22 @@ export const pinTheBossScene: SceneFactory = () => {
             // The referee's palm hits the mat: jolt + make sure the digit
             // is showing (the view will confirm on the next snapshot).
             if (!reduced) shaker?.kick(6);
+            atmosphere?.impact(0.42, GOLD);
             syncCount(typeof f.value === "number" ? f.value : shownCount + 1);
             break;
           case "countBroken":
             breakCount();
+            atmosphere?.impact(0.55, COLORS.support);
             break;
           case "pinned":
             // The bar just crossed the line — Justin hit the mat.
             if (!reduced) shaker?.kick(10);
             dustAtJustin();
+            atmosphere?.impact(1, COLORS.grievance);
             break;
           case "miracle":
             miracle?.trigger();
+            atmosphere?.impact(1, GOLD);
             if (!reduced) shaker?.kick(8);
             break;
           default:
@@ -665,6 +678,11 @@ export const pinTheBossScene: SceneFactory = () => {
         stamp.scale.set(stampSpring.value);
       }
 
+      atmosphere?.update(
+        args.dtMs,
+        phase,
+        clamp(Math.abs(pinSpring.velocity) / 7 + shownCount / 5, 0, 1),
+      );
       dust?.update(args.dtMs);
       shaker?.update(args.dtMs);
       miracle?.update(args.dtMs);
@@ -677,6 +695,7 @@ export const pinTheBossScene: SceneFactory = () => {
       dust = null;
       miracle?.destroy();
       miracle = null;
+      atmosphere = null;
       // GameCanvas destroys the display tree after unmount.
       world = null;
       overlay = null;

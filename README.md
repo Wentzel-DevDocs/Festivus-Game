@@ -262,6 +262,16 @@ Everything auto-advances; the host (the first boss screen) can skip any phase.
    Household** on the poster is the *all-time wins leader* — win enough
    matches and the person everyone gangs up on becomes you.
 
+Across the full match, a persistent real-time cinematic director bridges the
+phase and event changes with title cards, letterboxing, camera pulses, moving
+fog, dust, shadow passes, and impact color. Each arena adds its own light and
+smoke palette on top. An original Web Audio score changes motif, tempo,
+filtering, and resolution with the public phase, event intensity, and result.
+Only the server-designated host plays that score, so a room gets one coherent
+soundtrack instead of every phone playing an offset copy. Reduced-motion mode
+keeps a calm static composition, and controller canvases use fewer atmospheric
+objects than the broadcast.
+
 ---
 
 ## Add your own event in 4 steps
@@ -501,19 +511,21 @@ lib/
   game/engine/registry.ts the ordered list of events in a match
   game/engine/session.ts  the phase state machine (lobby → … → splash)
   game/engine/math.ts     shared helpers: progress steps, miracles, shuffles
+  game/presentation.ts   anonymous public-state cues for the adaptive score
   game/events/            the five feats of strength — one small file each
   game/filter.ts          name + grievance text cleanup
   game/persist.ts         the shape of the one durable write per match
   realtime/protocol.ts    every message shape shared between browser and room
   realtime/useRoom.ts     the React hook that speaks WebSocket to the room
   identity.ts             sticky localStorage id (name + score only, never a side)
-  sound.ts                bleeps (WebAudio, respects mute)
+  sound.ts                original adaptive score + impact stings (Web Audio)
 render/
   core.tsx                GameCanvas: Pixi boot, scene swapping, 25 Hz → 60 fps interpolation
-  scenes/                 one PixiJS scene per event, + backdrop + jack-in-the-box
+  cinematicDirector.ts   persistent transitions, fog, shadows, impacts, camera direction
+  scenes/                 event scenes + retained per-arena cinematic atmosphere
   toolkit.ts              shared drawing helpers (Justin's head, poles, water)
 server/game/
-  core.ts                 THE game logic: roster, tick, anonymity tokens, rate cap (transport-agnostic)
+  core.ts                 THE game logic: roster, tick, aggregate action routing, rate cap (transport-agnostic)
   server.ts               Socket.IO room server — WebSocket + 25 Hz tick adapter over core.ts (pnpm start:server)
 railway.json              Railway deploy config (runs the room server, not Next.js)
 scripts/
