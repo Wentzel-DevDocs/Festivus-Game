@@ -7,6 +7,7 @@
 class UCameraComponent;
 class UMaterialInstanceDynamic;
 class UPointLightComponent;
+class UPostProcessComponent;
 class USceneComponent;
 class UStaticMeshComponent;
 
@@ -21,19 +22,48 @@ public:
 
     virtual void Tick(float DeltaSeconds) override;
 
+    UFUNCTION(BlueprintCallable, Category = "Academy|Camera")
+    bool FocusPortal(int32 PortalIndex);
+
+    UFUNCTION(BlueprintCallable, Category = "Academy|Camera")
+    void ReturnToOverview();
+
+    UFUNCTION(BlueprintCallable, Category = "Academy|Accessibility")
+    void SetReducedMotionEnabled(bool bEnabled);
+
 protected:
     virtual void BeginPlay() override;
 
 private:
+    enum class ECameraState : uint8
+    {
+        Arrival,
+        Overview,
+        Focusing,
+        Focused,
+        Returning
+    };
+
     void ApplySurfaceTreatment();
     void CaptureValidationScreenshot();
     void ExitAfterCapture();
+    void BeginCameraTransition(
+        ECameraState NewState,
+        const FTransform& TargetTransform,
+        float TargetFOV,
+        float Duration);
+    void UpdateCameraTransition(float DeltaSeconds);
+    void FinishCameraTransition();
+    void UpdatePortalAtmosphere();
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USceneComponent> SceneRoot;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UCameraComponent> AcademyCamera;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UPostProcessComponent> CinematicGrade;
 
     UPROPERTY(VisibleAnywhere)
     TArray<TObjectPtr<UPointLightComponent>> PortalLights;
@@ -62,4 +92,15 @@ private:
     FTimerHandle CaptureTimer;
     FTimerHandle ExitTimer;
     float PresentationTime = 0.0f;
+    float OverviewIdleTime = 0.0f;
+    float PortalFocusAlpha = 0.0f;
+    ECameraState CameraState = ECameraState::Arrival;
+    FTransform TransitionStartTransform;
+    FTransform TransitionTargetTransform;
+    float TransitionStartFOV = 66.0f;
+    float TransitionTargetFOV = 66.0f;
+    float TransitionElapsed = 0.0f;
+    float TransitionDuration = 0.0f;
+    int32 ActivePortalIndex = INDEX_NONE;
+    bool bReducedMotionEnabled = false;
 };

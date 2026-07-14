@@ -32,8 +32,8 @@ export default async function AcademyTrackPage({
   if (!room) notFound();
 
   return (
-    <main className="safe-viewport mx-auto min-h-dvh w-full max-w-[1920px] px-3 py-4 md:px-6 md:py-6">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-4">
+    <main className="academy-room-shell safe-viewport mx-auto min-h-dvh w-full max-w-[1920px] px-3 py-4 md:px-6 md:py-6">
+      <header className="academy-room-header mb-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Link
             href="/academy"

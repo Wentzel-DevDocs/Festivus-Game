@@ -13,7 +13,9 @@ const requiredFiles = [
   "Source/FestivusAcademy/FestivusAcademy.Build.cs",
   "Source/FestivusAcademy/FestivusAcademy.cpp",
   "Source/FestivusAcademy/AcademyGameInstanceSubsystem.cpp",
+  "Source/FestivusAcademy/AcademyBrowserBridge.cpp",
   "Source/FestivusAcademy/AcademyHUDWidget.cpp",
+  "Source/FestivusAcademy/AcademyWebBrowser.cpp",
   "Source/FestivusAcademy/AcademyWorldDirector.cpp",
   "Source/FestivusAcademy/AcademyPlayerController.cpp",
   "Source/FestivusAcademy/AcademyGameMode.cpp",
@@ -69,6 +71,43 @@ for (const mapSetting of [
 const gameConfig = await readFile(resolve(root, "Config/DefaultGame.ini"), "utf8");
 if (!gameConfig.includes('ApiBaseUrl="http://localhost:3000"')) {
   throw new Error("Academy ApiBaseUrl must be quoted so Unreal does not treat // as an INI comment");
+}
+
+const hudSource = await readFile(
+  resolve(root, "Source/FestivusAcademy/AcademyHUDWidget.cpp"),
+  "utf8",
+);
+for (const requiredContract of [
+  "RebuildWidget()",
+  "Academy embedded room reported hydrated and painted",
+  "Browser->LoadURL(TEXT(\"about:blank\"))",
+  "Browser->ShutdownBrowser()",
+  "ViewState = EAcademyViewState::Failed",
+  "keeping the safety cover while late recovery remains active",
+]) {
+  if (!hudSource.includes(requiredContract)) {
+    throw new Error(`Missing native room lifecycle contract: ${requiredContract}`);
+  }
+}
+
+const worldSource = await readFile(
+  resolve(root, "Source/FestivusAcademy/AcademyWorldDirector.cpp"),
+  "utf8",
+);
+if (
+  !worldSource.includes(
+    'SetReducedMotionEnabled(FParse::Param(FCommandLine::Get(), TEXT("AcademyReducedMotion")))',
+  )
+) {
+  throw new Error("Reduced-motion mode must be applied before the first atrium tick");
+}
+
+const browserSource = await readFile(
+  resolve(root, "Source/FestivusAcademy/AcademyWebBrowser.cpp"),
+  "utf8",
+);
+if (!browserSource.includes('AcademyBridgeName = TEXT("academybridge")')) {
+  throw new Error("Academy browser must expose only the dedicated readiness bridge");
 }
 
 for (const target of [

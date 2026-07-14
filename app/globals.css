@@ -1194,6 +1194,19 @@ button {
   min-height: calc(100dvh - 7.5rem);
 }
 
+html[data-unreal-academy="1"] .academy-room-shell {
+  max-width: none;
+  padding: 0.5rem;
+}
+
+html[data-unreal-academy="1"] .academy-room-header {
+  display: none;
+}
+
+html[data-unreal-academy="1"] .academy-mission-shell {
+  min-height: calc(100dvh - 1rem);
+}
+
 .academy-mission-rail {
   align-self: stretch;
 }
