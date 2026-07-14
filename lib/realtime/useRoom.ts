@@ -50,6 +50,8 @@ export interface RoomApi {
   tap(side?: 0 | 1): void;
   submitGrievance(text: string): Promise<{ ok: boolean; reason?: string }>;
   hostStart(): void;
+  /** Player-safe restart accepted only from a completed splash screen. */
+  startNextMatch(): void;
   hostSkip(): void;
   hostHideGrievance(id: string): void;
   switchToPlayer(name?: string): Promise<boolean>;
@@ -160,6 +162,9 @@ export function useRoom(join: JoinParams | null): RoomApi {
       },
       hostStart() {
         conn()?.fire("hostStart");
+      },
+      startNextMatch() {
+        conn()?.fire("startNextMatch");
       },
       hostSkip() {
         conn()?.fire("hostSkip");

@@ -15,6 +15,7 @@
  *   6. the approval verdict matches weighted aggregate action contribution
  *   7. the champion is the top masher
  *   8. the grievance limit is three per player, independently
+ *   9. a late player can escape a completed room without stale-host access
  *
  * RoomCore is transport-agnostic, so this needs no server, no WebSockets, and
  * no DB — the fetch stub makes tuning/persistence no-op to defaults. The
@@ -129,6 +130,14 @@ async function main() {
 
   check(act<{ counted: boolean }>(bossId, "tap", 0).counted === false, "boss tap is refused");
   check(act<{ ok: boolean }>(bossId, "pickSide", 0).ok === false, "boss pickSide is refused");
+  check(
+    !act<{ ok: boolean }>(players[0].id, "hostStart").ok,
+    "non-host player cannot start the lobby",
+  );
+  check(
+    !act<{ ok: boolean }>(players[0].id, "startNextMatch").ok,
+    "fresh-game action is refused before splash",
+  );
 
   /* ── start match: grievances ─────────────────────────────────────────── */
 
@@ -289,6 +298,39 @@ async function main() {
   check(anonymityViolation === null, `anonymity sweep clean${anonymityViolation ? `: ${anonymityViolation}` : ""}`);
   check((latest!.roundResults?.length ?? 0) === EVENT_COUNT, `${EVENT_COUNT} round results recorded`);
   check(phasesSeen.has("lobby") && phasesSeen.has("finale"), "phase machine ran lobby → finale");
+
+  /* ── completed-room recovery ───────────────────────────────────────── */
+
+  const late = { you: null as YouMessage | null };
+  const lateId = "late-player";
+  conns.set(lateId, { onYou: (message) => (late.you = message) });
+  core.connect(
+    lateId,
+    sanitizeJoin({ role: "player", name: "Late Joiner", stickyId: crypto.randomUUID() }),
+  );
+  check(late.you?.isHost === false, "late player remains non-host while boss display is connected");
+  check(
+    act<{ ok: boolean }>(lateId, "startNextMatch").ok,
+    "late player can start a fresh match from completed splash",
+  );
+  check(
+    !act<{ ok: boolean }>(lateId, "startNextMatch").ok,
+    "fresh-game action is single-use once splash has ended",
+  );
+  await until(() => latest?.phase === "grievance_write", 5000, "fresh match leaves stale splash");
+  const freshSnapshot = latest as Snapshot | null;
+  check(freshSnapshot?.matchSummary === null, "fresh match clears the previous summary");
+  check(freshSnapshot?.roundResults.length === 0, "fresh match clears previous round results");
+  check(freshSnapshot?.grievanceCount === 0, "fresh match clears previous grievances");
+  check(
+    players[0].you?.grievancesRemaining === GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER,
+    "fresh match restores an exhausted player's grievance quota",
+  );
+  check(
+    late.you?.grievancesRemaining === GAME_CONFIG.MAX_GRIEVANCES_PER_PLAYER,
+    "fresh match gives the late player a full grievance quota",
+  );
+  check(freshSnapshot?.approvalHidden === true, "fresh match reseals aggregate approval");
 
   clearInterval(ticker);
 

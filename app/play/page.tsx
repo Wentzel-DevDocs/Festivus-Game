@@ -544,15 +544,19 @@ function PhasePanel({
             alltime={snapshot.leaderboard}
             headOfHousehold={snapshot.matchSummary?.headOfHousehold ?? null}
           />
-          {room.you?.isHost && (
+          <div className="forge-panel p-4 text-center">
+            <p className="eyebrow">Ready for a clean room?</p>
+            <p className="mt-1 text-sm text-aluminum-300">
+              Results stay visible until someone deliberately starts the next match.
+            </p>
             <button
               type="button"
-              onClick={() => room.hostStart()}
-              className="action-plate display-header min-h-12 w-full border border-grievance px-4 py-3 text-lg tracking-widest text-aluminum-100"
+              onClick={() => room.startNextMatch()}
+              className="action-plate display-header mt-4 min-h-12 w-full border border-grievance px-4 py-3 text-lg tracking-widest text-aluminum-100"
             >
-              Redeploy the match
+              Start a fresh game
             </button>
-          )}
+          </div>
         </div>
       );
 
